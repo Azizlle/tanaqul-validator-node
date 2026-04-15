@@ -3,8 +3,8 @@ from unittest.mock import patch, MagicMock
 import os
 
 # Inject env BEFORE importing config
-os.environ.setdefault("TANAQUL_VALIDATOR_ID", "test-id")
-os.environ.setdefault("TANAQUL_API_KEY", "test-key")
+os.environ.setdefault("TANAQUL_VALIDATOR_ID", "ci")
+os.environ.setdefault("TANAQUL_API_KEY", "ci")
 os.environ.setdefault("TANAQUL_BACKEND_URL", "https://example.test")
 
 from src import client  # noqa: E402
@@ -19,8 +19,8 @@ def test_heartbeat_body_shape():
         body = kwargs["json"]
         assert body["block_height"] == 42
         assert body["uptime_seconds"] == 99
-        assert body["api_key"] == "test-key"
-        assert body["validator_id"] == "test-id"
+        assert body["api_key"] == "ci"
+        assert body["validator_id"] == "ci"
 
 
 def test_sign_block_idempotent_on_already_signed():
