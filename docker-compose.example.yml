@@ -1,0 +1,21 @@
+# Example deployment — copy to docker-compose.yml and fill in your credentials.
+version: "3.8"
+
+services:
+  validator:
+    image: ghcr.io/azizlle/tanaqul-validator-node:latest
+    restart: always
+    container_name: tanaqul-validator
+    environment:
+      TANAQUL_VALIDATOR_ID: "PASTE-YOUR-VALIDATOR-UUID"
+      TANAQUL_API_KEY: "PASTE-YOUR-API-KEY"
+      TANAQUL_BACKEND_URL: "https://api.tanaqul.app"
+      TANAQUL_REGION: "Riyadh"
+      TANAQUL_LOG_LEVEL: "INFO"
+    volumes:
+      - tanaqul-data:/data
+    ports:
+      - "8080:8080"   # health + metrics
+
+volumes:
+  tanaqul-data:
