@@ -4,7 +4,7 @@ Official Docker validator for the [Tanaqul](https://tanaqul.app) precious-metals
 
 ## Run
 
-You'll receive a one-time email from `noreply@tanaqul.app` containing your validator ID and API key. Then:
+You'll receive a one-time email from `validators@exit.sa` containing your validator ID and API key. Then:
 
 ```bash
 docker run -d --restart always --name tanaqul-validator \
@@ -59,4 +59,4 @@ The data volume is preserved across updates.
 
 ## Support
 
-Open an issue at github.com/Azizlle/tanaqul-validator-node or email validators@tanaqul.app.
+Open an issue at github.com/Azizlle/tanaqul-validator-node or email validators@exit.sa.
