@@ -2,6 +2,8 @@
 
 Official Docker validator for the [Tanaqul](https://tanaqul.app) precious-metals blockchain.
 
+Runs on any always-on machine — home desktop, Raspberry Pi, cheap VPS, or laptop. No server administration required.
+
 ## Run
 
 You'll receive a one-time email from `validators@exit.sa` containing your validator ID and API key. Then:
@@ -22,6 +24,27 @@ That's it. The container will:
 - Send a heartbeat every 30 seconds
 - Poll for pending blocks every 15 seconds and sign each one
 - Expose `/health` and `/metrics` on port 8080
+
+## Where to run
+
+The node runs in a Docker container on any always-on machine. It doesn't need a fancy server.
+
+**Good options:**
+- **Home desktop** — always-on PC, runs 24/7, free
+- **Raspberry Pi** — low-power, ARM-compatible build included (multi-arch image)
+- **Cheap VPS** — Hetzner, DigitalOcean, Contabo, roughly $4–6/month
+- **Laptop** — works but only signs while the laptop is on; earnings drop when it sleeps
+- **AWS / Azure / GCP** — enterprise option, usually overkill for a single validator
+
+**Minimum specs:**
+- 256 MB RAM
+- 50 MB disk
+- Constant internet connection
+- Outbound HTTPS to `https://api.tanaqul.app` (port 443) — that's it
+
+**No inbound ports needed.** The node polls outbound; nothing connects to it from the internet. Your home router and any firewall will work as-is.
+
+**Why always-on matters:** The node earns a share of every block it signs. Blocks seal roughly once every 24 hours (or sooner if trading is heavy). If your node is offline when a block seals, you miss that block's validator share. Missing a few is fine; missing every block means zero earnings.
 
 ## Verify it's running
 
