@@ -1,4 +1,5 @@
 """ECDSA key generation, persistence, and block signing."""
+import hashlib
 import os
 import logging
 from ecdsa import SigningKey, NIST256p, BadSignatureError
@@ -33,10 +34,16 @@ def load_or_create_key(path: str) -> SigningKey:
 
 
 def sign_block_hash(sk: SigningKey, block_hash: str) -> str:
-    """Sign a block hash. Returns hex-encoded signature."""
+    """Sign a block hash. Returns hex-encoded signature.
+
+    P2-003 2026-05-29: hash function pinned to SHA-256 (was python-ecdsa's
+    default SHA-1). MUST match the backend's verifier, which uses
+    cryptography.hazmat.primitives.hashes.SHA256() — see
+    app/api/v1/validators.py:sign_block.
+    """
     # block_hash arrives as "0x..." — strip prefix before signing
     payload = block_hash[2:] if block_hash.startswith("0x") else block_hash
-    sig = sk.sign(payload.encode("utf-8"))
+    sig = sk.sign(payload.encode("utf-8"), hashfunc=hashlib.sha256)
     return sig.hex()
 
 

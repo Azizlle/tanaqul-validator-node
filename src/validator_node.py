@@ -26,12 +26,13 @@ def _handle_signal(signum, _frame):
     _SHUTDOWN = True
 
 
-def _do_heartbeat(start_ts: float, signed_height: int):
+def _do_heartbeat(start_ts: float, signed_height: int, public_key_hex: str = None):
     try:
         client.heartbeat(
             block_height=signed_height,
             peer_count=0,  # peer-to-peer is not a thing in this permissioned model
             uptime_seconds=int(time.time() - start_ts),
+            public_key_hex=public_key_hex,
         )
         healthcheck.record_heartbeat_ok()
     except client.BackendError as e:
@@ -87,7 +88,8 @@ def main():
 
     # Load or create signing key
     sk = crypto.load_or_create_key(config.KEY_PATH)
-    logger.info(f"Public key: 0x{crypto.public_key_hex(sk)[:16]}...")
+    pk_hex = crypto.public_key_hex(sk)
+    logger.info(f"Public key: 0x{pk_hex[:16]}...")
 
     # Start health/metrics server
     healthcheck.start_health_server(config.HEALTH_PORT)
@@ -98,14 +100,15 @@ def main():
     signed_blocks: set = set()
     signed_height = 0
 
-    # Initial heartbeat ASAP so /health flips green
-    _do_heartbeat(start_ts, signed_height)
+    # Initial heartbeat ASAP so /health flips green. P2-003: also publishes
+    # our public key so the backend can verify subsequent ECDSA signatures.
+    _do_heartbeat(start_ts, signed_height, public_key_hex=pk_hex)
     last_heartbeat = time.time()
 
     while not _SHUTDOWN:
         now = time.time()
         if now - last_heartbeat >= config.HEARTBEAT_INTERVAL:
-            _do_heartbeat(start_ts, signed_height)
+            _do_heartbeat(start_ts, signed_height, public_key_hex=pk_hex)
             last_heartbeat = now
         if now - last_poll >= config.POLL_INTERVAL:
             signed_height = max(signed_height, _do_polling(sk, signed_blocks))

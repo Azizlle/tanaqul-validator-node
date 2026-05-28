@@ -34,8 +34,15 @@ class BackendError(Exception):
     pass
 
 
-def heartbeat(block_height: int, peer_count: int, uptime_seconds: int) -> dict:
-    """POST /api/v1/validators/heartbeat — proves liveness."""
+def heartbeat(block_height: int, peer_count: int, uptime_seconds: int,
+              public_key_hex: str = None) -> dict:
+    """POST /api/v1/validators/heartbeat — proves liveness.
+
+    P2-003 2026-05-29: if public_key_hex is supplied, the backend persists
+    it on the validators row and uses it to verify ECDSA signatures on
+    /sign-block. Sent on every heartbeat (cheap, idempotent on the backend
+    — only writes when value changes).
+    """
     body = {
         "validator_id": config.TANAQUL_VALIDATOR_ID,
         "api_key": config.TANAQUL_API_KEY,
@@ -45,6 +52,8 @@ def heartbeat(block_height: int, peer_count: int, uptime_seconds: int) -> dict:
         "uptime_seconds": int(uptime_seconds),
         "region": config.REGION,
     }
+    if public_key_hex:
+        body["public_key_hex"] = public_key_hex
     r = _S.post(f"{config.API_BASE}/validators/heartbeat", json=body, timeout=10)
     if r.status_code == 401:
         raise BackendError("auth_failed: API key rejected")
