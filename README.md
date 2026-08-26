@@ -1,6 +1,8 @@
 # Tanaqul Validator Node
 
-Official Docker validator for the [Tanaqul](https://tanaqul.app) precious-metals blockchain.
+Official Docker validator node for [Tanaqul](https://explorer.tanaqul.app), a Saudi precious-metals custody platform.
+
+The node takes part in Tanaqul's **permissioned distributed ledger**: it polls for block records that Tanaqul has sealed and returns an ECDSA signature over each one. It is not a peer in a decentralized network — there is no peer-to-peer layer, no consensus algorithm and no smart contracts. Tanaqul seals the blocks; your node co-signs them.
 
 Runs on any always-on machine — home desktop, Raspberry Pi, cheap VPS, or laptop. No server administration required.
 
@@ -44,7 +46,7 @@ The node runs in a Docker container on any always-on machine. It doesn't need a 
 
 **No inbound ports needed.** The node polls outbound; nothing connects to it from the internet. Your home router and any firewall will work as-is.
 
-**Why always-on matters:** The node earns a share of every block it signs. Blocks seal roughly once every 24 hours (or sooner if trading is heavy). If your node is offline when a block seals, you miss that block's validator share. Missing a few is fine; missing every block means zero earnings.
+**Why always-on matters:** Blocks seal roughly once every 24 hours (or sooner if trading is heavy). Earnings come from a commission pool shared between active validators and apportioned by Tanaqul's per-validator block count — not per signature, and not per block missed. Uptime still matters: an unreachable node is skipped when Tanaqul selects which node creates the next block, and signing promptly is what the role exists for.
 
 ## Verify it's running
 
