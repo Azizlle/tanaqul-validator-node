@@ -34,7 +34,7 @@ HEALTH_PORT        = _int("TANAQUL_HEALTH_PORT", 8080)
 LOG_LEVEL          = os.environ.get("TANAQUL_LOG_LEVEL", "INFO").upper()
 REGION             = os.environ.get("TANAQUL_REGION", "Riyadh")
 DATA_DIR           = os.environ.get("TANAQUL_DATA_DIR", "/data")
-NODE_VERSION       = "1.0.1"
+NODE_VERSION       = "1.0.2"
 USER_AGENT         = f"tanaqul-validator-node/{NODE_VERSION}"
 
 # Derived
