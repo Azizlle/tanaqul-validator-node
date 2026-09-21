@@ -21,9 +21,19 @@ jobs:
           TANAQUL_API_KEY: ci
           TANAQUL_BACKEND_URL: https://example.test
 
+  # ⛔ TAGS ONLY — a merge must not be a publish.
+  #
+  # This used to fire on every push to `main`, and `latest` was stamped by
+  # `enable={{is_default_branch}}`. So merging ANY commit — a test file, a README line —
+  # republished `ghcr.io/azizlle/tanaqul-validator-node:latest`, the image that signs
+  # blocks, as a side effect of the merge. It also broke the one string that identifies
+  # what a node is running: `config.NODE_VERSION` is hand-edited, so a rebuilt `latest`
+  # kept reporting the version of the tag it no longer contained.
+  #
+  # Shipping the image that signs your blocks is an explicit act: push a `v*` tag.
   build-and-push:
     needs: test
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,11 +51,15 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/azizlle/tanaqul-validator-node
+          # `latest` is unconditional because this job now runs ONLY on a v* tag.
+          # `enable={{is_default_branch}}` would be false on every tag build, so `latest`
+          # would freeze forever — a dead rule that reads as a live one.
+          # ⚠️ Nothing but tag patterns inside the block scalar below: a `#` line there is
+          # a VALUE, not a comment, and metadata-action would take it as a tag.
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
           context: .
