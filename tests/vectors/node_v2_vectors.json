@@ -1,0 +1,263 @@
+{
+  "_generated_by": "scripts/gen_node_v2_vectors.py",
+  "_contract": "The node repo commits this file byte-identically and its implementation must reproduce every `expected` field from the `given` inputs. Derived by running the backend's own builders — never typed.",
+  "_synthetic": "Every value is invented. The node repo is public; no production data.",
+  "cases": [
+    {
+      "name": "typical_block_one_match_one_event_one_tx",
+      "why": "the ordinary shape: every leaf list non-empty, all fields populated",
+      "given": {
+        "number": 4242,
+        "prev_hash": "0xabababababababababababababababababababababababababababababababab",
+        "hash_timestamp": "2026-09-21T10:43:35.202786+00:00",
+        "creator_id": "11111111-2222-3333-4444-555555555555",
+        "match_leaves": [
+          "MATCH|aaaaaaaa-0000-0000-0000-000000000001|bbbbbbbb-0000-0000-0000-000000000002|cccccccc-0000-0000-0000-000000000003|Gold|10.000|300.00|2026-09-21T09:00:00+00:00"
+        ],
+        "event_leaves": [
+          {
+            "id": "dddddddd-0000-0000-0000-000000000004",
+            "event_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "grams": "10.000",
+            "event_type": "MINT",
+            "metal": "Gold",
+            "vault_key": "VK-0001"
+          }
+        ],
+        "tx_leaves": [
+          {
+            "id": "eeeeeeee-0000-0000-0000-000000000005",
+            "tx_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "grams": "10.000",
+            "tx_type": "TRADE",
+            "metal": "Gold",
+            "total_grams": "10.000",
+            "from_vault_key": "VK-0001",
+            "to_vault_key": "VK-0002"
+          }
+        ]
+      },
+      "expected": {
+        "event_leaf_payloads": [
+          "E|dddddddd-0000-0000-0000-000000000004|0x1111111111111111111111111111111111111111111111111111111111111111|MINT|Gold|10.000|VK-0001"
+        ],
+        "tx_leaf_payloads": [
+          "T|eeeeeeee-0000-0000-0000-000000000005|0x2222222222222222222222222222222222222222222222222222222222222222|TRADE|Gold|10.000|10.000|VK-0001|VK-0002"
+        ],
+        "match_root": "0xeeab4f63fa69cb5de3b78010ac9c8194b5604e57c455cf247ace104a262bd5c1",
+        "event_root": "0x869481c86784fb0f786e88b222797bc47114e6ce72c25cb64d95a47c9a668fe7",
+        "tx_root": "0x71bac30fdf8a8abfaf8c8a00f5ac52aff4ab6835f9fff1f75f5808964eead7fc",
+        "match_count": 1,
+        "event_count": 1,
+        "tx_count": 1,
+        "block_hash": "0x47db78059ebc0d752af97b200f014f3b3c8be89348b7587fd7a297001b5e793c",
+        "validation_payload": "tv2|4242|0x47db78059ebc0d752af97b200f014f3b3c8be89348b7587fd7a297001b5e793c|0xabababababababababababababababababababababababababababababababab|0xeeab4f63fa69cb5de3b78010ac9c8194b5604e57c455cf247ace104a262bd5c1|0x869481c86784fb0f786e88b222797bc47114e6ce72c25cb64d95a47c9a668fe7|0x71bac30fdf8a8abfaf8c8a00f5ac52aff4ab6835f9fff1f75f5808964eead7fc|1|1|1|2026-09-21T10:43:35.202786+00:00|11111111-2222-3333-4444-555555555555"
+      }
+    },
+    {
+      "name": "contentless_block_all_three_lists_empty",
+      "why": "merkle of an empty list is sha256('empty'), a CONSTANT — so all three roots collide on a contentless block. A node must reproduce that exactly rather than treating empty as an error",
+      "given": {
+        "number": 1,
+        "prev_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "hash_timestamp": "2026-03-05T04:58:11.992527+00:00",
+        "creator_id": "11111111-2222-3333-4444-555555555555",
+        "match_leaves": [],
+        "event_leaves": [],
+        "tx_leaves": []
+      },
+      "expected": {
+        "event_leaf_payloads": [],
+        "tx_leaf_payloads": [],
+        "match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "event_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "tx_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "match_count": 0,
+        "event_count": 0,
+        "tx_count": 0,
+        "block_hash": "0x9abf3734141bb29ba9b892e97db33ef5190f40216306053d171d79df340f369a",
+        "validation_payload": "tv2|1|0x9abf3734141bb29ba9b892e97db33ef5190f40216306053d171d79df340f369a|0x0000000000000000000000000000000000000000000000000000000000000000|0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d|0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d|0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d|0|0|0|2026-03-05T04:58:11.992527+00:00|11111111-2222-3333-4444-555555555555"
+      }
+    },
+    {
+      "name": "odd_leaf_count_duplicates_the_last_node",
+      "why": "an odd level duplicates its last node before pairing. Three leaves is the smallest case that exercises it at two levels",
+      "given": {
+        "number": 777,
+        "prev_hash": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "hash_timestamp": "2026-09-21T11:00:00+00:00",
+        "creator_id": "99999999-8888-7777-6666-555555555555",
+        "match_leaves": [
+          "MATCH|m0|b0|s0|Silver|1.500|95.25|2026-09-21T10:00:00+00:00",
+          "MATCH|m1|b1|s1|Silver|1.500|95.25|2026-09-21T10:01:00+00:00",
+          "MATCH|m2|b2|s2|Silver|1.500|95.25|2026-09-21T10:02:00+00:00"
+        ],
+        "event_leaves": [
+          {
+            "id": "ev-0",
+            "event_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "grams": "1.500",
+            "event_type": "BURN",
+            "metal": "Silver",
+            "vault_key": "VK-0000"
+          },
+          {
+            "id": "ev-1",
+            "event_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "grams": "1.500",
+            "event_type": "BURN",
+            "metal": "Silver",
+            "vault_key": "VK-0001"
+          },
+          {
+            "id": "ev-2",
+            "event_hash": "0x0000000000000000000000000000000000000000000000000000000000000002",
+            "grams": "1.500",
+            "event_type": "BURN",
+            "metal": "Silver",
+            "vault_key": "VK-0002"
+          }
+        ],
+        "tx_leaves": [
+          {
+            "id": "tx-0",
+            "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "grams": "1.500",
+            "tx_type": "TRANSFER",
+            "metal": "Silver",
+            "total_grams": "3.000",
+            "from_vault_key": "VK-0000",
+            "to_vault_key": "VK-0001"
+          },
+          {
+            "id": "tx-1",
+            "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "grams": "1.500",
+            "tx_type": "TRANSFER",
+            "metal": "Silver",
+            "total_grams": "3.000",
+            "from_vault_key": "VK-0001",
+            "to_vault_key": "VK-0002"
+          },
+          {
+            "id": "tx-2",
+            "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000002",
+            "grams": "1.500",
+            "tx_type": "TRANSFER",
+            "metal": "Silver",
+            "total_grams": "3.000",
+            "from_vault_key": "VK-0002",
+            "to_vault_key": "VK-0003"
+          }
+        ]
+      },
+      "expected": {
+        "event_leaf_payloads": [
+          "E|ev-0|0x0000000000000000000000000000000000000000000000000000000000000000|BURN|Silver|1.500|VK-0000",
+          "E|ev-1|0x0000000000000000000000000000000000000000000000000000000000000001|BURN|Silver|1.500|VK-0001",
+          "E|ev-2|0x0000000000000000000000000000000000000000000000000000000000000002|BURN|Silver|1.500|VK-0002"
+        ],
+        "tx_leaf_payloads": [
+          "T|tx-0|0x0000000000000000000000000000000000000000000000000000000000000000|TRANSFER|Silver|1.500|3.000|VK-0000|VK-0001",
+          "T|tx-1|0x0000000000000000000000000000000000000000000000000000000000000001|TRANSFER|Silver|1.500|3.000|VK-0001|VK-0002",
+          "T|tx-2|0x0000000000000000000000000000000000000000000000000000000000000002|TRANSFER|Silver|1.500|3.000|VK-0002|VK-0003"
+        ],
+        "match_root": "0x5e2ebf6e3fd39bc633d9585403f7bbb556e44d6fc0bb8c6220566641d366e7e4",
+        "event_root": "0x5b4cd1e6117dd6b2775271e667efab9394f0c374f45cad22676f1d09b0eff8f1",
+        "tx_root": "0x669af6e7a49b0f1bc03e3b3996706a26c75ab00a7ac0b7c874af3de8b4f7b021",
+        "match_count": 3,
+        "event_count": 3,
+        "tx_count": 3,
+        "block_hash": "0xbbc0171c75d08bc76bea9747e2a92e68ea82ce4158a60343ec0eacd5adfd5ffb",
+        "validation_payload": "tv2|777|0xbbc0171c75d08bc76bea9747e2a92e68ea82ce4158a60343ec0eacd5adfd5ffb|0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd|0x5e2ebf6e3fd39bc633d9585403f7bbb556e44d6fc0bb8c6220566641d366e7e4|0x5b4cd1e6117dd6b2775271e667efab9394f0c374f45cad22676f1d09b0eff8f1|0x669af6e7a49b0f1bc03e3b3996706a26c75ab00a7ac0b7c874af3de8b4f7b021|3|3|3|2026-09-21T11:00:00+00:00|99999999-8888-7777-6666-555555555555"
+      }
+    },
+    {
+      "name": "empty_and_zero_fields_render_as_the_defaults",
+      "why": "the payload builders coalesce: `_eh or ''`, `_grams or 0`. A ZERO grams is FALSY, so it renders as `0` and NOT as `0.000` — the endpoint mirrors this with `str(r[2] or 0)`. A node that formats the number it received would diverge here and refuse every such block",
+      "given": {
+        "number": 31337,
+        "prev_hash": "0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+        "hash_timestamp": "2026-09-21T12:00:00+00:00",
+        "creator_id": "00000000-0000-0000-0000-000000000000",
+        "match_leaves": [],
+        "event_leaves": [
+          {
+            "id": "zero-1",
+            "event_hash": "",
+            "grams": "0",
+            "event_type": "",
+            "metal": "",
+            "vault_key": ""
+          }
+        ],
+        "tx_leaves": [
+          {
+            "id": "zero-2",
+            "tx_hash": "",
+            "grams": "0",
+            "tx_type": "",
+            "metal": "",
+            "total_grams": "0",
+            "from_vault_key": "",
+            "to_vault_key": ""
+          }
+        ]
+      },
+      "expected": {
+        "event_leaf_payloads": [
+          "E|zero-1||||0|"
+        ],
+        "tx_leaf_payloads": [
+          "T|zero-2||||0|0||"
+        ],
+        "match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "event_root": "0xd4cbf1e0f7fb77aaf7e9e6a6cfd529708e9bcae42b9fa3fc422bce96025f44fb",
+        "tx_root": "0xa00fbd52d157ec319e17012948d39b2369ab4d55564b0323bd2e5b4399b740d8",
+        "match_count": 0,
+        "event_count": 1,
+        "tx_count": 1,
+        "block_hash": "0xfc8ef0090df7f16f60d8a452c6cc7e7b20b84a08035cef19fe5852bf0ace3f11",
+        "validation_payload": "tv2|31337|0xfc8ef0090df7f16f60d8a452c6cc7e7b20b84a08035cef19fe5852bf0ace3f11|0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef|0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d|0xd4cbf1e0f7fb77aaf7e9e6a6cfd529708e9bcae42b9fa3fc422bce96025f44fb|0xa00fbd52d157ec319e17012948d39b2369ab4d55564b0323bd2e5b4399b740d8|0|1|1|2026-09-21T12:00:00+00:00|00000000-0000-0000-0000-000000000000"
+      }
+    },
+    {
+      "name": "non_ascii_survives_utf8_encoding",
+      "why": "this platform is bilingual and hashes are taken over UTF-8 bytes. A node encoding as latin-1 or normalising unicode would produce a different digest for the same leaf",
+      "given": {
+        "number": 8080,
+        "prev_hash": "0x1212121212121212121212121212121212121212121212121212121212121212",
+        "hash_timestamp": "2026-09-21T13:00:00+00:00",
+        "creator_id": "abcdef00-0000-0000-0000-000000000000",
+        "match_leaves": [
+          "MATCH|m-ar|b-ar|s-ar|ذهب|2.250|310.75|2026-09-21T12:30:00+00:00"
+        ],
+        "event_leaves": [
+          {
+            "id": "ev-ar",
+            "event_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "grams": "2.250",
+            "event_type": "MINT",
+            "metal": "ذهب",
+            "vault_key": "خزنة-٠١"
+          }
+        ],
+        "tx_leaves": []
+      },
+      "expected": {
+        "event_leaf_payloads": [
+          "E|ev-ar|0x3333333333333333333333333333333333333333333333333333333333333333|MINT|ذهب|2.250|خزنة-٠١"
+        ],
+        "tx_leaf_payloads": [],
+        "match_root": "0xa2e11893f30eda18d24500eddde3d462703d14fec7d416714fb4459138051472",
+        "event_root": "0x5d5c290e9447f5d02c1220999d61ce92383777e670e548850b8e47deb962f28e",
+        "tx_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "match_count": 1,
+        "event_count": 1,
+        "tx_count": 0,
+        "block_hash": "0xceb48ea1a0a6cade7766c6b95cc225a233a08ddb949dd20231979f2816c304d8",
+        "validation_payload": "tv2|8080|0xceb48ea1a0a6cade7766c6b95cc225a233a08ddb949dd20231979f2816c304d8|0x1212121212121212121212121212121212121212121212121212121212121212|0xa2e11893f30eda18d24500eddde3d462703d14fec7d416714fb4459138051472|0x5d5c290e9447f5d02c1220999d61ce92383777e670e548850b8e47deb962f28e|0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d|1|1|0|2026-09-21T13:00:00+00:00|abcdef00-0000-0000-0000-000000000000"
+      }
+    }
+  ]
+}
