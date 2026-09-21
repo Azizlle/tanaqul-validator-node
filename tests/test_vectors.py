@@ -48,6 +48,9 @@ def test_the_node_reproduces_every_expected_field(case):
 
     #: the leaf payloads first — a root that matches by luck with a wrong payload is
     #: not agreement, and the payload is where two implementations actually diverge
+    assert got["match_leaf_payloads"] == e["match_leaf_payloads"], (
+        f"{case['name']}: match leaf payload differs from the backend's.\n"
+        f"  why this case exists: {case['why']}")
     assert got["event_leaf_payloads"] == e["event_leaf_payloads"], (
         f"{case['name']}: event leaf payload differs from the backend's.\n"
         f"  why this case exists: {case['why']}")

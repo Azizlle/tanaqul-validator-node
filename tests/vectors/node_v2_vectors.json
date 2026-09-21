@@ -12,7 +12,15 @@
         "hash_timestamp": "2026-09-21T10:43:35.202786+00:00",
         "creator_id": "11111111-2222-3333-4444-555555555555",
         "match_leaves": [
-          "MATCH|aaaaaaaa-0000-0000-0000-000000000001|bbbbbbbb-0000-0000-0000-000000000002|cccccccc-0000-0000-0000-000000000003|Gold|10.000|300.00|2026-09-21T09:00:00+00:00"
+          {
+            "id": "aaaaaaaa-0000-0000-0000-000000000001",
+            "buy_order_id": "bbbbbbbb-0000-0000-0000-000000000002",
+            "sell_order_id": "cccccccc-0000-0000-0000-000000000003",
+            "metal": "Gold",
+            "quantity_grams": "10.000",
+            "price_per_gram": "300.00",
+            "matched_at": "2026-09-21T09:00:00+00:00"
+          }
         ],
         "event_leaves": [
           {
@@ -38,6 +46,9 @@
         ]
       },
       "expected": {
+        "match_leaf_payloads": [
+          "MATCH|aaaaaaaa-0000-0000-0000-000000000001|bbbbbbbb-0000-0000-0000-000000000002|cccccccc-0000-0000-0000-000000000003|Gold|10.000|300.00|2026-09-21T09:00:00+00:00"
+        ],
         "event_leaf_payloads": [
           "E|dddddddd-0000-0000-0000-000000000004|0x1111111111111111111111111111111111111111111111111111111111111111|MINT|Gold|10.000|VK-0001"
         ],
@@ -67,6 +78,7 @@
         "tx_leaves": []
       },
       "expected": {
+        "match_leaf_payloads": [],
         "event_leaf_payloads": [],
         "tx_leaf_payloads": [],
         "match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
@@ -88,9 +100,33 @@
         "hash_timestamp": "2026-09-21T11:00:00+00:00",
         "creator_id": "99999999-8888-7777-6666-555555555555",
         "match_leaves": [
-          "MATCH|m0|b0|s0|Silver|1.500|95.25|2026-09-21T10:00:00+00:00",
-          "MATCH|m1|b1|s1|Silver|1.500|95.25|2026-09-21T10:01:00+00:00",
-          "MATCH|m2|b2|s2|Silver|1.500|95.25|2026-09-21T10:02:00+00:00"
+          {
+            "id": "m0",
+            "buy_order_id": "b0",
+            "sell_order_id": "s0",
+            "metal": "Silver",
+            "quantity_grams": "1.500",
+            "price_per_gram": "95.25",
+            "matched_at": "2026-09-21T10:00:00+00:00"
+          },
+          {
+            "id": "m1",
+            "buy_order_id": "b1",
+            "sell_order_id": "s1",
+            "metal": "Silver",
+            "quantity_grams": "1.500",
+            "price_per_gram": "95.25",
+            "matched_at": "2026-09-21T10:01:00+00:00"
+          },
+          {
+            "id": "m2",
+            "buy_order_id": "b2",
+            "sell_order_id": "s2",
+            "metal": "Silver",
+            "quantity_grams": "1.500",
+            "price_per_gram": "95.25",
+            "matched_at": "2026-09-21T10:02:00+00:00"
+          }
         ],
         "event_leaves": [
           {
@@ -152,6 +188,11 @@
         ]
       },
       "expected": {
+        "match_leaf_payloads": [
+          "MATCH|m0|b0|s0|Silver|1.500|95.25|2026-09-21T10:00:00+00:00",
+          "MATCH|m1|b1|s1|Silver|1.500|95.25|2026-09-21T10:01:00+00:00",
+          "MATCH|m2|b2|s2|Silver|1.500|95.25|2026-09-21T10:02:00+00:00"
+        ],
         "event_leaf_payloads": [
           "E|ev-0|0x0000000000000000000000000000000000000000000000000000000000000000|BURN|Silver|1.500|VK-0000",
           "E|ev-1|0x0000000000000000000000000000000000000000000000000000000000000001|BURN|Silver|1.500|VK-0001",
@@ -180,7 +221,17 @@
         "prev_hash": "0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
         "hash_timestamp": "2026-09-21T12:00:00+00:00",
         "creator_id": "00000000-0000-0000-0000-000000000000",
-        "match_leaves": [],
+        "match_leaves": [
+          {
+            "id": "unmatched-1",
+            "buy_order_id": "None",
+            "sell_order_id": "None",
+            "metal": "Platinum",
+            "quantity_grams": "0",
+            "price_per_gram": "0",
+            "matched_at": ""
+          }
+        ],
         "event_leaves": [
           {
             "id": "zero-1",
@@ -205,20 +256,23 @@
         ]
       },
       "expected": {
+        "match_leaf_payloads": [
+          "MATCH|unmatched-1|None|None|Platinum|0|0|"
+        ],
         "event_leaf_payloads": [
           "E|zero-1||||0|"
         ],
         "tx_leaf_payloads": [
           "T|zero-2||||0|0||"
         ],
-        "match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "match_root": "0x35f9c921a8e5b977a231f008f2030f655b204c7e3e1dd44a124a21430f5d2574",
         "event_root": "0xd4cbf1e0f7fb77aaf7e9e6a6cfd529708e9bcae42b9fa3fc422bce96025f44fb",
         "tx_root": "0xa00fbd52d157ec319e17012948d39b2369ab4d55564b0323bd2e5b4399b740d8",
-        "match_count": 0,
+        "match_count": 1,
         "event_count": 1,
         "tx_count": 1,
-        "block_hash": "0xfc8ef0090df7f16f60d8a452c6cc7e7b20b84a08035cef19fe5852bf0ace3f11",
-        "validation_payload": "tv2|31337|0xfc8ef0090df7f16f60d8a452c6cc7e7b20b84a08035cef19fe5852bf0ace3f11|0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef|0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d|0xd4cbf1e0f7fb77aaf7e9e6a6cfd529708e9bcae42b9fa3fc422bce96025f44fb|0xa00fbd52d157ec319e17012948d39b2369ab4d55564b0323bd2e5b4399b740d8|0|1|1|2026-09-21T12:00:00+00:00|00000000-0000-0000-0000-000000000000"
+        "block_hash": "0x8ed7ef9d0d09f3bc9b9dc38bfa554a94ef3181b8864a4c6032c22a514e9feb5c",
+        "validation_payload": "tv2|31337|0x8ed7ef9d0d09f3bc9b9dc38bfa554a94ef3181b8864a4c6032c22a514e9feb5c|0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef|0x35f9c921a8e5b977a231f008f2030f655b204c7e3e1dd44a124a21430f5d2574|0xd4cbf1e0f7fb77aaf7e9e6a6cfd529708e9bcae42b9fa3fc422bce96025f44fb|0xa00fbd52d157ec319e17012948d39b2369ab4d55564b0323bd2e5b4399b740d8|1|1|1|2026-09-21T12:00:00+00:00|00000000-0000-0000-0000-000000000000"
       }
     },
     {
@@ -230,7 +284,15 @@
         "hash_timestamp": "2026-09-21T13:00:00+00:00",
         "creator_id": "abcdef00-0000-0000-0000-000000000000",
         "match_leaves": [
-          "MATCH|m-ar|b-ar|s-ar|ذهب|2.250|310.75|2026-09-21T12:30:00+00:00"
+          {
+            "id": "m-ar",
+            "buy_order_id": "b-ar",
+            "sell_order_id": "s-ar",
+            "metal": "ذهب",
+            "quantity_grams": "2.250",
+            "price_per_gram": "310.75",
+            "matched_at": "2026-09-21T12:30:00+00:00"
+          }
         ],
         "event_leaves": [
           {
@@ -245,6 +307,9 @@
         "tx_leaves": []
       },
       "expected": {
+        "match_leaf_payloads": [
+          "MATCH|m-ar|b-ar|s-ar|ذهب|2.250|310.75|2026-09-21T12:30:00+00:00"
+        ],
         "event_leaf_payloads": [
           "E|ev-ar|0x3333333333333333333333333333333333333333333333333333333333333333|MINT|ذهب|2.250|خزنة-٠١"
         ],
