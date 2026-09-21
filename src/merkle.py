@@ -74,6 +74,32 @@ def _field(d: dict, key: str, where: str) -> str:
     return str(v)
 
 
+def match_leaf_payload(m: dict) -> str:
+    """Mirrors sealing.match_leaf_payload_from_fields, from the dict `/contents` serves.
+
+    Backend: f"MATCH|{id}|{buy_order_id}|{sell_order_id}|{metal}|{quantity_grams}|"
+             f"{price_per_gram}|{matched_at}"
+
+    ⚠️ Until 2026-09-21 the endpoint served this leaf as a FINISHED STRING while event
+    and tx leaves came as fields — so a node verified those two formats itself and took
+    this one on trust, for no principled reason. All three are fields now and the node
+    builds every payload, so a change to any leaf format is caught here rather than
+    signed.
+
+    ⚠️ `buy_order_id` can legitimately be the STRING "None": the backend interpolates the
+    value directly and `f"{None}"` renders "None", which production has already hashed
+    into sealed blocks. It is served as-is and used as-is — coalescing it to empty here
+    would compute a root no block ever had.
+    """
+    w = "match leaf"
+    return (
+        f"MATCH|{_field(m,'id',w)}|{_field(m,'buy_order_id',w)}"
+        f"|{_field(m,'sell_order_id',w)}|{_field(m,'metal',w)}"
+        f"|{_field(m,'quantity_grams',w)}|{_field(m,'price_per_gram',w)}"
+        f"|{_field(m,'matched_at',w)}"
+    )
+
+
 def event_leaf_payload(e: dict) -> str:
     """Mirrors sealing.event_leaf_payload, from the dict `/contents` serves.
 
@@ -140,14 +166,15 @@ def roots_from_contents(contents: dict) -> dict:
     carries them, they are still ignored here — accepting a served root would reduce
     this node to a self-reported version string.
     """
-    match_leaves: List[str] = list(contents.get("match_leaves") or [])
+    mt = [match_leaf_payload(m) for m in (contents.get("match_leaves") or [])]
     ev = [event_leaf_payload(e) for e in (contents.get("event_leaves") or [])]
     tx = [tx_leaf_payload(t) for t in (contents.get("tx_leaves") or [])]
     return {
-        "match_root": merkle_root([sha256(p) for p in match_leaves]),
+        "match_leaf_payloads": mt,
+        "match_root": merkle_root([sha256(p) for p in mt]),
         "event_root": merkle_root([sha256(p) for p in ev]),
         "tx_root": merkle_root([sha256(p) for p in tx]),
-        "match_count": len(match_leaves),
+        "match_count": len(mt),
         "event_count": len(contents.get("event_leaves") or []),
         "tx_count": len(contents.get("tx_leaves") or []),
         "event_leaf_payloads": ev,
