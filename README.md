@@ -52,6 +52,21 @@ A refusal is signed with your key and states both hashes, so the disagreement is
 evidence rather than a flag. If the block is later corrected, your node signs it on
 the next poll — no restart needed.
 
+## Verifying the node against the protocol
+
+`spec/agreement_vectors.json` holds the protocol's hashing vectors: inputs and the
+exact bytes both implementations must produce. The node's test suite runs them,
+and so does Tanaqul's own CI against its independent implementation — so if either
+side ever drifts, both go red before any signature is affected.
+
+```bash
+pip install -r requirements.txt pytest && pytest -q
+```
+
+The vectors prove the two sides *agree*. That they are *correct* is pinned
+separately, by tests written from the documented rules rather than from either
+implementation.
+
 ## Where to run
 
 The node runs in a Docker container on any always-on machine. It doesn't need a fancy server.

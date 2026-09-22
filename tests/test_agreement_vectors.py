@@ -1,0 +1,103 @@
+"""The node half of the cross-repo agreement run.
+
+⛔ WHY TWO KINDS OF TEST EXIST FOR ONE PIECE OF ARITHMETIC, and why neither replaces the
+other:
+
+  * `test_verify.py` pins CORRECTNESS, from the documented rules — the empty root is
+    sha256 of the word "empty", merkle pairs concatenate hex TEXT, `hash_timestamp` is
+    used verbatim. Written from the spec so it fails if either side drifts toward a
+    plausible-looking alternative.
+  * THIS file pins AGREEMENT. `spec/agreement_vectors.json` is one artifact, run by this
+    suite and by the platform's cross-repo job against ITS implementation. A change on
+    either side that alters any output turns both red.
+
+Agreement alone would happily pin two copies of the same mistake; correctness alone would
+let the two sides be independently right about different things. The pair is the check.
+
+⚠️ AND THIS IS THE ONE PLACE A SECOND IMPLEMENTATION IS CORRECT. Everywhere else two
+renderings of one truth is a defect waiting to drift. Here the node exists to check the
+platform, so importing the platform's hashing would verify its arithmetic with its own
+code and a bug would verify itself. Independent — but not unpinned, which is this file.
+"""
+import json
+import os
+import pathlib
+
+import pytest
+
+os.environ.setdefault("TANAQUL_VALIDATOR_ID", "ci")
+os.environ.setdefault("TANAQUL_API_KEY", "ci")
+os.environ.setdefault("TANAQUL_BACKEND_URL", "https://example.test")
+
+from src import verify  # noqa: E402
+
+VECTORS_PATH = pathlib.Path(__file__).resolve().parent.parent / "spec" / "agreement_vectors.json"
+V = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
+
+KINDS = ("sha256", "merkle_root", "match_leaf", "event_leaf", "tx_leaf",
+         "hash_block_v2", "validation_payload", "refusal_payload")
+
+
+def _cases(kind):
+    return [pytest.param(c, id=f"{kind}[{i}]") for i, c in enumerate(V[kind])]
+
+
+@pytest.mark.parametrize("c", _cases("sha256"))
+def test_sha256_vectors(c):
+    assert verify.sha256(c["input"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("merkle_root"))
+def test_merkle_root_vectors(c):
+    assert verify.merkle_root(c["leaves"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("match_leaf"))
+def test_match_leaf_vectors(c):
+    assert verify.match_leaf(c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("event_leaf"))
+def test_event_leaf_vectors(c):
+    assert verify.event_leaf(c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("tx_leaf"))
+def test_tx_leaf_vectors(c):
+    assert verify.tx_leaf(c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("hash_block_v2"))
+def test_hash_block_v2_vectors(c):
+    assert verify.hash_block_v2(**c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("validation_payload"))
+def test_validation_payload_vectors(c):
+    assert verify.validation_payload(**c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("refusal_payload"))
+def test_refusal_payload_vectors(c):
+    assert verify.refusal_payload(**c["fields"]) == c["output"]
+
+
+def test_the_vector_file_is_not_EMPTY_or_PARTIAL():
+    """⛔ THE ENTRY WITNESS. Every test above is parametrized over the file, so an empty or
+    truncated file produces ZERO test cases and a green suite — the shape where a check
+    passes because nothing ran. Floors, not exact counts: adding a vector must not require
+    editing a number, but losing a whole category must fail."""
+    missing = [k for k in KINDS if not V.get(k)]
+    assert not missing, f"vector categories absent — nothing was checked for: {missing}"
+    total = sum(len(V[k]) for k in KINDS)
+    assert total >= 20, f"only {total} vectors; the file has been truncated"
+
+
+def test_every_vector_category_is_EXERCISED_by_a_test_in_this_file():
+    """⚠️ A category added to the file and to no test is a vector nobody runs — it reads as
+    coverage in a diff and checks nothing. This derives the exercised set from the module
+    rather than from a list someone must remember to extend."""
+    src = pathlib.Path(__file__).read_text(encoding="utf-8")
+    exercised = {k for k in V if isinstance(V[k], list) and f'_cases("{k}")' in src}
+    declared = {k for k in V if isinstance(V[k], list) and not k.startswith("_")}
+    assert declared == exercised, f"vector categories with no test: {declared - exercised}"

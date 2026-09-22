@@ -1,0 +1,291 @@
+{
+  "_comment": [
+    "Protocol agreement vectors for the Tanaqul permissioned ledger.",
+    "Two INDEPENDENT implementations must produce these byte-for-byte: the",
+    "validator node's, and the platform's. Neither imports the other — the whole",
+    "point of a second implementation here is that a bug in one cannot verify",
+    "itself — so this file is the only thing connecting them, and both CI suites",
+    "run it.",
+    "WHAT THIS FILE IS NOT: proof that the values are CORRECT. It proves the two",
+    "sides AGREE. Correctness is pinned separately on each side by tests written",
+    "from the documented rules (the empty root is sha256 of the word 'empty', not",
+    "of an empty string; merkle pairs concatenate hex TEXT, not decoded bytes;",
+    "hash_timestamp is used verbatim). Agreement without those would just pin two",
+    "copies of the same mistake.",
+    "Field values are deliberately synthetic. These vectors exercise the FORMAT."
+  ],
+  "sha256": [
+    {
+      "input": "",
+      "output": "0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "input": "empty",
+      "output": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d"
+    },
+    {
+      "input": "genesis",
+      "output": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"
+    },
+    {
+      "input": "v2|1|0x00",
+      "output": "0xae4a26b1e77d8d368fca948fb7d7d43838abdd95bea567aa345de4fd65ca454f"
+    },
+    {
+      "input": "أبج",
+      "output": "0xc598c3f004a5d69b6372cb304234a3c14054b97f1e46673f70826fc147b08597"
+    },
+    {
+      "input": "a|b",
+      "output": "0x0eab8a0a3380abf4c7d1fb0b43b66aafbb64a4b953e4eb2dccca579461912d0c"
+    },
+    {
+      "input": "  ",
+      "output": "0x6c179f21e6f62b629055d8ab40f454ed02e48b68563913473b857d3638e23b28"
+    }
+  ],
+  "merkle_root": [
+    {
+      "leaves": [],
+      "output": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d"
+    },
+    {
+      "leaves": [
+        "0x1111111111111111111111111111111111111111111111111111111111111111"
+      ],
+      "output": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "leaves": [
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222222222222222222222222222"
+      ],
+      "output": "0xca9034371c79ec26ec0496b53420a1117d4f765800dfdce138138b139d591f13"
+    },
+    {
+      "leaves": [
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "0x3333333333333333333333333333333333333333333333333333333333333333"
+      ],
+      "output": "0xdcd1c491e41ad1e6c2d34c2c2dda0799e7ab76a1048c189ba9b29b33daaffd1c"
+    },
+    {
+      "leaves": [
+        "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "0x0202020202020202020202020202020202020202020202020202020202020202",
+        "0x0303030303030303030303030303030303030303030303030303030303030303",
+        "0x0404040404040404040404040404040404040404040404040404040404040404"
+      ],
+      "output": "0xda7d67dc9b4a865a361f9b3e6088406fc1e9d49f46d009cee3a2218c00692e5d"
+    },
+    {
+      "leaves": [
+        "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "0x0202020202020202020202020202020202020202020202020202020202020202",
+        "0x0303030303030303030303030303030303030303030303030303030303030303",
+        "0x0404040404040404040404040404040404040404040404040404040404040404",
+        "0x0505050505050505050505050505050505050505050505050505050505050505"
+      ],
+      "output": "0x5b17dbe00458fdf4dab5203f7c118732bf65c076d530043a87e7e29d482c1fae"
+    },
+    {
+      "leaves": [
+        "0x0101010101010101010101010101010101010101010101010101010101010101",
+        "0x0202020202020202020202020202020202020202020202020202020202020202",
+        "0x0303030303030303030303030303030303030303030303030303030303030303",
+        "0x0404040404040404040404040404040404040404040404040404040404040404",
+        "0x0505050505050505050505050505050505050505050505050505050505050505",
+        "0x0606060606060606060606060606060606060606060606060606060606060606",
+        "0x0707070707070707070707070707070707070707070707070707070707070707"
+      ],
+      "output": "0x00807169eb3789ac12f2f491c1619a3b3e84137ae16cd375265ddb5d0c4d5af8"
+    }
+  ],
+  "match_leaf": [
+    {
+      "fields": {
+        "id": "m-0001",
+        "buy_order_id": "b-1",
+        "sell_order_id": "s-1",
+        "metal": "METAL_A",
+        "quantity_grams": "2.500",
+        "price_per_gram": "312.45",
+        "matched_at": "2026-09-23T08:00:00+00:00"
+      },
+      "output": "MATCH|m-0001|b-1|s-1|METAL_A|2.500|312.45|2026-09-23T08:00:00+00:00"
+    },
+    {
+      "fields": {
+        "id": "m-0002",
+        "buy_order_id": "b-2",
+        "sell_order_id": "s-2",
+        "metal": "METAL_B",
+        "quantity_grams": "100.000",
+        "price_per_gram": "3.90",
+        "matched_at": "2026-09-23T08:01:00+00:00"
+      },
+      "output": "MATCH|m-0002|b-2|s-2|METAL_B|100.000|3.90|2026-09-23T08:01:00+00:00"
+    }
+  ],
+  "event_leaf": [
+    {
+      "fields": {
+        "id": "e-0001",
+        "event_hash": "0xabababababababababababababababababababababababababababababababab",
+        "grams": "100.000",
+        "event_type": "EVENT_A",
+        "metal": "METAL_A",
+        "vault_key": "VK-0001"
+      },
+      "output": "E|e-0001|0xabababababababababababababababababababababababababababababababab|EVENT_A|METAL_A|100.000|VK-0001"
+    },
+    {
+      "fields": {
+        "id": "e-0002",
+        "event_hash": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "grams": "0",
+        "event_type": "EVENT_B",
+        "metal": "METAL_B",
+        "vault_key": ""
+      },
+      "output": "E|e-0002|0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd|EVENT_B|METAL_B|0|"
+    },
+    {
+      "fields": {
+        "id": "e-0003",
+        "event_hash": "",
+        "grams": "0.150",
+        "event_type": "EVENT_C",
+        "metal": "METAL_C",
+        "vault_key": "VK-0009"
+      },
+      "output": "E|e-0003||EVENT_C|METAL_C|0.150|VK-0009"
+    }
+  ],
+  "tx_leaf": [
+    {
+      "fields": {
+        "id": "t-0001",
+        "tx_hash": "0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+        "grams": "5.000",
+        "tx_type": "TX_A",
+        "metal": "METAL_A",
+        "total_grams": "95.000",
+        "from_vault_key": "VK-A",
+        "to_vault_key": "VK-B"
+      },
+      "output": "T|t-0001|0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef|TX_A|METAL_A|5.000|95.000|VK-A|VK-B"
+    }
+  ],
+  "hash_block_v2": [
+    {
+      "fields": {
+        "number": 1,
+        "prev_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "event_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "tx_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "match_count": 0,
+        "event_count": 0,
+        "tx_count": 0,
+        "hash_timestamp": "2026-03-01T00:00:00+00:00",
+        "creator_id": "00000000-0000-0000-0000-000000000001"
+      },
+      "output": "0x604951c650f95d47327619d8dea0b0ae50111014a7dccd9c9f48a11286909379"
+    },
+    {
+      "fields": {
+        "number": 207,
+        "prev_hash": "0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f",
+        "match_root": "0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5",
+        "event_root": "0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda",
+        "tx_root": "0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552",
+        "match_count": 2,
+        "event_count": 3,
+        "tx_count": 1,
+        "hash_timestamp": "2026-09-23T08:15:42.123456+00:00",
+        "creator_id": "00000000-0000-0000-0000-00000000000a"
+      },
+      "output": "0x38badbf09a85edda04f16cdc862bdd973811936077f643d438f1df9644fdd09f"
+    }
+  ],
+  "validation_payload": [
+    {
+      "fields": {
+        "number": 207,
+        "block_hash": "0x38badbf09a85edda04f16cdc862bdd973811936077f643d438f1df9644fdd09f",
+        "prev_hash": "0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f",
+        "match_root": "0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5",
+        "event_root": "0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda",
+        "tx_root": "0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552",
+        "match_count": 2,
+        "event_count": 3,
+        "tx_count": 1,
+        "hash_timestamp": "2026-09-23T08:15:42.123456+00:00",
+        "creator_id": "00000000-0000-0000-0000-00000000000a"
+      },
+      "output": "tv2|207|38badbf09a85edda04f16cdc862bdd973811936077f643d438f1df9644fdd09f|0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f|0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5|0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda|0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552|2|3|1|2026-09-23T08:15:42.123456+00:00|00000000-0000-0000-0000-00000000000a"
+    },
+    {
+      "fields": {
+        "number": 207,
+        "block_hash": "38badbf09a85edda04f16cdc862bdd973811936077f643d438f1df9644fdd09f",
+        "prev_hash": "0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f",
+        "match_root": "0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5",
+        "event_root": "0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda",
+        "tx_root": "0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552",
+        "match_count": 2,
+        "event_count": 3,
+        "tx_count": 1,
+        "hash_timestamp": "2026-09-23T08:15:42.123456+00:00",
+        "creator_id": "00000000-0000-0000-0000-00000000000a"
+      },
+      "output": "tv2|207|38badbf09a85edda04f16cdc862bdd973811936077f643d438f1df9644fdd09f|0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f|0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5|0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda|0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552|2|3|1|2026-09-23T08:15:42.123456+00:00|00000000-0000-0000-0000-00000000000a"
+    }
+  ],
+  "refusal_payload": [
+    {
+      "fields": {
+        "number": 207,
+        "validator_id": "00000000-0000-0000-0000-00000000000a",
+        "verdict": "HASH_MISMATCH",
+        "observed_block_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expected_block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "observed_prev_hash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "expected_prev_hash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "match_root": "0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5",
+        "event_root": "0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda",
+        "tx_root": "0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552",
+        "match_count": 2,
+        "event_count": 3,
+        "tx_count": 1,
+        "hash_timestamp": "2026-09-23T08:15:42.123456+00:00",
+        "creator_id": "sys",
+        "reported_at": "2026-09-23T09:00:00+00:00"
+      },
+      "output": "tr2|00000000-0000-0000-0000-00000000000a|207|HASH_MISMATCH|0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5|0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda|0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552|2|3|1|2026-09-23T08:15:42.123456+00:00|sys|2026-09-23T09:00:00+00:00"
+    },
+    {
+      "fields": {
+        "number": 1,
+        "validator_id": "v-2",
+        "verdict": "FORMAT_NOT_VALIDATABLE",
+        "observed_block_hash": "",
+        "expected_block_hash": "",
+        "observed_prev_hash": "",
+        "expected_prev_hash": "",
+        "match_root": "",
+        "event_root": "",
+        "tx_root": "",
+        "match_count": 0,
+        "event_count": 0,
+        "tx_count": 0,
+        "hash_timestamp": "",
+        "creator_id": "",
+        "reported_at": "2026-09-23T09:00:01+00:00"
+      },
+      "output": "tr2|v-2|1|FORMAT_NOT_VALIDATABLE||||||||0|0|0|||2026-09-23T09:00:01+00:00"
+    }
+  ]
+}
