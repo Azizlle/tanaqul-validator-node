@@ -2,7 +2,7 @@
 
 Official Docker validator node for [Tanaqul](https://explorer.tanaqul.app), a Saudi precious-metals custody platform.
 
-The node takes part in Tanaqul's **permissioned distributed ledger**: it polls for block records that Tanaqul has sealed and returns an ECDSA signature over each one. It is not a peer in a decentralized network — there is no peer-to-peer layer, no consensus algorithm and no smart contracts. Tanaqul seals the blocks; your node co-signs them.
+The node takes part in Tanaqul's **permissioned distributed ledger**: it polls for block records that Tanaqul has sealed, **independently recomputes each one from its contents**, and returns an ECDSA signature only if its own arithmetic agrees. It is not a peer in a decentralized network — there is no peer-to-peer layer, no consensus algorithm and no smart contracts. Tanaqul seals the blocks; your node checks and co-signs them.
 
 Runs on any always-on machine — home desktop, Raspberry Pi, cheap VPS, or laptop. No server administration required.
 
@@ -24,8 +24,33 @@ That's it. The container will:
 
 - Generate a local ECDSA key on first run (persisted in the `tanaqul-data` volume)
 - Send a heartbeat every 30 seconds
-- Poll for pending blocks every 15 seconds and sign each one
+- Poll for pending blocks every 15 seconds, verify each one, and sign or refuse
 - Expose `/health` and `/metrics` on port 8080
+
+## What your node actually checks
+
+Your signature is not a receipt. For every block, the node fetches the block's
+contents, rebuilds each leaf from its fields, merkles them into three roots, and
+recomputes the block hash — then compares that to the hash Tanaqul stores.
+
+Two of those three roots are served by no endpoint. The only way to hold them is
+to build the leaves yourself, so a valid signature could not have been produced by
+a node that skipped the work.
+
+The node also checks that each block follows the previous block **it verified
+itself**, not the one Tanaqul says came before.
+
+There are three outcomes, and `/metrics` counts them separately:
+
+| Outcome | Metric | What it means |
+|---|---|---|
+| Validated | `validator_blocks_validated_total` | Recomputed, agreed, signed |
+| Attested | `validator_blocks_attested_v1_total` | An older-format block your node cannot recompute. Signed as receipt only — never counted as validation |
+| Refused | `validator_blocks_refused_total` | Your node checked, disagreed, and filed a signed objection saying exactly where |
+
+A refusal is signed with your key and states both hashes, so the disagreement is
+evidence rather than a flag. If the block is later corrected, your node signs it on
+the next poll — no restart needed.
 
 ## Where to run
 
@@ -46,7 +71,7 @@ The node runs in a Docker container on any always-on machine. It doesn't need a 
 
 **No inbound ports needed.** The node polls outbound; nothing connects to it from the internet. Your home router and any firewall will work as-is.
 
-**Why always-on matters:** Blocks seal roughly once every 24 hours (or sooner if trading is heavy). Earnings come from a commission pool shared between active validators and apportioned by Tanaqul's per-validator block count — not per signature, and not per block missed. Uptime still matters: an unreachable node is skipped when Tanaqul selects which node creates the next block, and signing promptly is what the role exists for.
+**Why always-on matters:** Blocks seal when enough custody activity has accumulated to fill one — so on a quiet week there may be no block at all, and on a busy day several. There is no timer, and a block is never minted with nothing in it. Earnings come from a commission pool shared between active validators and apportioned by Tanaqul's per-validator block count — not per signature, and not per block missed. Uptime still matters: an unreachable node is skipped when Tanaqul selects which node creates the next block, and signing promptly is what the role exists for.
 
 ## Verify it's running
 

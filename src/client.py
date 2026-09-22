@@ -97,3 +97,77 @@ def sign_block(block_number: int, signature_hex: str, approved: bool = True) -> 
     if r.status_code >= 400:
         raise BackendError(f"sign-block HTTP {r.status_code}: {r.text[:200]}")
     return r.json()
+
+
+def get_block_contents(block_number: int) -> dict:
+    """GET /api/v1/validators/blocks/{n}/contents — the leaf INPUTS of a sealed block.
+
+    ⛔ THIS DELIBERATELY DOES NOT RETURN `event_root` OR `tx_root`, and that omission is
+    the mechanism rather than an oversight. `/pending-blocks` hands this node a
+    `block_hash` and a `merkle_root`, which is why a v1 node could sign without checking
+    anything. The other two roots are served by nothing, so the only way to hold them is
+    to build the leaves and merkle them — and a `tv2` signature therefore could not have
+    been produced by a node that did not do that work.
+    """
+    headers = {
+        "X-Validator-Id": config.TANAQUL_VALIDATOR_ID,
+        "X-Validator-Api-Key": config.TANAQUL_API_KEY,
+    }
+    r = _S.get(f"{config.API_BASE}/validators/blocks/{int(block_number)}/contents",
+               headers=headers, timeout=10)
+    if r.status_code == 401:
+        raise BackendError("auth_failed: API key rejected")
+    if r.status_code >= 400:
+        raise BackendError(f"contents HTTP {r.status_code}: {r.text[:200]}")
+    return r.json() or {}
+
+
+def report_refusal(*, block_number: int, verdict: str, signature_hex: str,
+                   reported_at: str, observed_block_hash: str = "",
+                   expected_block_hash: str = "", observed_prev_hash: str = "",
+                   expected_prev_hash: str = "", match_root: str = "",
+                   event_root: str = "", tx_root: str = "", match_count: int = 0,
+                   event_count: int = 0, tx_count: int = 0, hash_timestamp: str = "",
+                   creator_id: str = "") -> dict:
+    """POST /api/v1/validators/report-refusal — state, under our own key, what we will not
+    attest and why.
+
+    ⛔ WHY THIS IS NOT JUST `sign_block(approved=False)`. `/sign-block` verifies a signature
+    against the roots the PLATFORM recomputed, so a node that disagrees about a root cannot
+    produce a signature that verifies there: it gets one uninformative 401 and its
+    objection is stored nowhere. **The disagreements most worth recording are exactly the
+    ones that channel cannot carry.**
+
+    ⛔ AND THE VERDICT IS INSIDE THE SIGNED BYTES (`tr2|`), so this is evidence rather than
+    a flag written by the party being objected to.
+
+    ⚠️ Every field here is committed by the pre-image the node signed. The endpoint rebuilds
+    that string FROM THIS BODY and verifies it, so a field sent differently from how it was
+    signed does not produce a wrong record — it produces no record at all.
+    """
+    body = {
+        "validator_id": config.TANAQUL_VALIDATOR_ID,
+        "api_key": config.TANAQUL_API_KEY,
+        "block_number": int(block_number),
+        "verdict": verdict,
+        "observed_block_hash": observed_block_hash,
+        "expected_block_hash": expected_block_hash,
+        "observed_prev_hash": observed_prev_hash,
+        "expected_prev_hash": expected_prev_hash,
+        "match_root": match_root,
+        "event_root": event_root,
+        "tx_root": tx_root,
+        "match_count": int(match_count),
+        "event_count": int(event_count),
+        "tx_count": int(tx_count),
+        "hash_timestamp": hash_timestamp,
+        "creator_id": creator_id,
+        "reported_at": reported_at,
+        "signature": signature_hex,
+    }
+    r = _S.post(f"{config.API_BASE}/validators/report-refusal", json=body, timeout=10)
+    if r.status_code == 401:
+        raise BackendError("auth_failed: API key rejected")
+    if r.status_code >= 400:
+        raise BackendError(f"report-refusal HTTP {r.status_code}: {r.text[:200]}")
+    return r.json() or {}

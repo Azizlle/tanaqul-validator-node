@@ -9,7 +9,9 @@ import signal
 import sys
 import time
 
-from src import config, client, crypto, healthcheck
+from datetime import datetime, timezone
+
+from src import config, client, crypto, healthcheck, verify
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL, logging.INFO),
@@ -40,36 +42,169 @@ def _do_heartbeat(start_ts: float, signed_height: int, public_key_hex: str = Non
         logger.error(f"heartbeat failed: {e}")
 
 
-def _do_polling(sk, signed_block_numbers: set) -> int:
-    """Poll for pending blocks, sign each one we haven't signed yet.
+class PollState:
+    """What this node has concluded, carried between polls.
 
-    Returns the highest block number signed (for heartbeat reporting).
+    ⚠️ IN MEMORY ONLY, AND THAT IS A DECLARED LIMIT rather than an oversight. A restart
+    clears `verified`, so the first block seen afterwards has no verified predecessor and
+    is admitted without a chain check — see `_do_polling`. Persisting it would let a node
+    refuse the whole chain forever on one bad row it can no longer re-examine, which is the
+    worse failure; a node that re-acquires its chain opinion from blocks it re-verifies is
+    the honest shape. What this does NOT cover: a fork that begins and ends entirely within
+    a restart window.
+    """
+
+    def __init__(self):
+        #: blocks whose signature the platform ACCEPTED — never "blocks we tried"
+        self.signed: set = set()
+        #: block number -> the hash THIS NODE computed and agreed with. Only ever written
+        #: for a block that passed v2 verification.
+        self.verified: dict = {}
+        #: block number -> the wire verdict already FILED, so a standing disagreement is
+        #: stated once rather than once per poll
+        self.refused: dict = {}
+
+
+def _refuse(sk, state: "PollState", v, block_number: int) -> None:
+    """File a signed objection — and mark it filed only once the platform accepted it.
+
+    ⛔ THE ORDER HERE IS THE GUARD. Recording the refusal before the POST would mean one
+    transient 503 permanently silences this node's objection to a tampered block: the
+    suppression that stops a flood of duplicate objections would itself become what hides
+    the page that matters.
+    """
+    wire = verify.WIRE_VERDICTS[v.verdict]
+    reported_at = datetime.now(timezone.utc).isoformat()
+
+    #: ⛔ ONE SET OF VALUES, TWO CONSUMERS — and it is built once so they cannot disagree.
+    #: The platform rebuilds the `tr2` string FROM THE POSTED BODY and verifies it against
+    #: the signature, so a single field signed differently from how it is sent does not
+    #: produce a wrong record: it produces NO record, rejected at the door, on the one
+    #: channel that exists because a refusal had nowhere to go. Built at two call sites
+    #: this was a live divergence waiting on any future edit — a mutation to the signed
+    #: half alone left the whole suite green.
+    facts = dict(
+        observed_block_hash=v.served_block_hash,
+        expected_block_hash=v.computed_block_hash,
+        observed_prev_hash=v.served_prev_hash,
+        expected_prev_hash=v.expected_prev_hash,
+        match_root=v.match_root, event_root=v.event_root, tx_root=v.tx_root,
+        match_count=v.match_count, event_count=v.event_count, tx_count=v.tx_count,
+        hash_timestamp=v.hash_timestamp, creator_id=v.creator_id,
+    )
+
+    message = verify.refusal_payload(
+        number=block_number, validator_id=config.TANAQUL_VALIDATOR_ID, verdict=wire,
+        reported_at=reported_at, **facts)
+    client.report_refusal(
+        block_number=block_number, verdict=wire,
+        signature_hex=crypto.sign_message(sk, message),
+        reported_at=reported_at, **facts)
+    state.refused[block_number] = wire          #: only now
+    healthcheck.record_block_refused()
+    logger.critical(f"REFUSED block #{block_number}: {wire} — {v.detail}")
+
+
+def _do_polling(sk, state: "PollState") -> int:
+    """Fetch each pending block's contents, verify it, then sign or refuse.
+
+    ⛔ WHAT THIS REPLACED, IN FULL:
+
+        h = b.get("block_hash") or ""
+        sig_hex = crypto.sign_block_hash(sk, h)
+
+    The node took the platform's claim about a block out of the platform's own reply and
+    signed it. The quorum was real and the cryptography was real; the thing attested was
+    that a node had received a string.
+
+    Returns the highest block number signed, for heartbeat reporting.
     """
     try:
         blocks = client.get_pending_blocks()
     except client.BackendError as e:
         logger.error(f"pending-blocks fetch failed: {e}")
-        return max(signed_block_numbers) if signed_block_numbers else 0
+        return max(state.signed) if state.signed else 0
 
-    highest = max(signed_block_numbers) if signed_block_numbers else 0
-    for b in blocks:
+    highest = max(state.signed) if state.signed else 0
+    #: ascending, so a block's predecessor is verified before it is judged
+    for b in sorted(blocks, key=lambda x: int(x.get("block_number", 0))):
         n = int(b.get("block_number", 0))
-        h = b.get("block_hash") or ""
-        if not n or not h:
+        served_hash = b.get("block_hash") or ""
+        if not n or not served_hash or n in state.signed:
             continue
-        if n in signed_block_numbers:
-            continue
+
+        #: ⛔ A FETCH FAILURE IS NOT A DISAGREEMENT, AND IT IS NOT A REASON TO SIGN. Both
+        #: wrong answers are available here: filing a refusal puts a signed accusation on a
+        #: objection channel because a load balancer hiccuped, and falling back to signing
+        #: the served hash restores the exact behaviour this replaced, on the one path
+        #: nobody would think to look at.
         try:
-            sig_hex = crypto.sign_block_hash(sk, h)
-            res = client.sign_block(n, sig_hex, approved=True)
-            signed_block_numbers.add(n)
-            healthcheck.record_block_signed()
-            quorum = " (QUORUM MET)" if res.get("quorum_met") else ""
-            logger.info(f"signed block #{n}{quorum}")
-            highest = max(highest, n)
+            contents = client.get_block_contents(n)
         except client.BackendError as e:
-            healthcheck.record_sign_fail()
-            logger.error(f"sign block #{n} failed: {e}")
+            healthcheck.record_contents_fail()
+            logger.error(f"block #{n} contents fetch failed, verifying nothing: {e}")
+            continue
+
+        #: ⛔ THE PREDECESSOR IS THE ONE THIS NODE VERIFIED, never the one the platform
+        #: names. `state.verified` holds only blocks that passed v2 verification, so an
+        #: attested legacy block cannot seed a chain check — that would be the platform's
+        #: claim laundered through one step into something that looks verified.
+        v = verify.check_block(contents, served_hash=served_hash,
+                               last_seen_hash=state.verified.get(n - 1))
+
+        if v.ok:
+            message = verify.validation_payload(
+                number=n, block_hash=served_hash, prev_hash=v.served_prev_hash,
+                match_root=v.match_root, event_root=v.event_root, tx_root=v.tx_root,
+                match_count=v.match_count, event_count=v.event_count,
+                tx_count=v.tx_count, hash_timestamp=v.hash_timestamp,
+                creator_id=v.creator_id)
+            try:
+                res = client.sign_block(n, crypto.sign_message(sk, message), approved=True)
+            except client.BackendError as e:
+                healthcheck.record_sign_fail()
+                logger.error(f"sign block #{n} failed: {e}")
+                continue
+            state.signed.add(n)
+            state.verified[n] = v.computed_block_hash
+            state.refused.pop(n, None)
+            healthcheck.record_block_validated()
+            quorum = " (QUORUM MET)" if res.get("quorum_met") else ""
+            logger.info(f"VALIDATED block #{n}{quorum}")
+            highest = max(highest, n)
+
+        elif verify.should_attest_v1(v):
+            #: ⚠️ Signed, because /pending-blocks keeps offering legacy blocks so they stay
+            #: rescuable — but over the v1 pre-image and counted separately. The platform
+            #: decides the scheme by trying v2 FIRST and falling back, so this can never
+            #: inflate a validated quorum. `state.verified` is deliberately NOT written.
+            try:
+                client.sign_block(n, crypto.sign_block_hash(sk, served_hash), approved=True)
+            except client.BackendError as e:
+                healthcheck.record_sign_fail()
+                logger.error(f"attest block #{n} failed: {e}")
+                continue
+            state.signed.add(n)
+            healthcheck.record_block_attested_v1()
+            logger.warning(f"ATTESTED block #{n} (legacy format, NOT validated): {v.detail}")
+            highest = max(highest, n)
+
+        elif verify.should_refuse(v):
+            #: ⚠️ RE-VERIFIED EVERY POLL, REPORTED ONLY WHEN THE VERDICT CHANGES. A repaired
+            #: block must become signable without restarting the fleet, so the check
+            #: repeats; a standing disagreement must not be re-filed once every POLL_INTERVAL, so
+            #: the report does not. The cost is one GET per poll per block in
+            #: disagreement — bounded by blocks the platform is serving wrongly, not by
+            #: chain size.
+            if state.refused.get(n) == verify.WIRE_VERDICTS[v.verdict]:
+                continue
+            try:
+                _refuse(sk, state, v, n)
+            except client.BackendError as e:
+                healthcheck.record_refusal_fail()
+                logger.error(f"REFUSAL for block #{n} could not be filed — a "
+                             f"disagreement nobody heard: {e}")
+
     return highest
 
 
@@ -97,7 +232,7 @@ def main():
     start_ts = time.time()
     last_heartbeat = 0.0
     last_poll = 0.0
-    signed_blocks: set = set()
+    state = PollState()
     signed_height = 0
 
     # Initial heartbeat ASAP so /health flips green. P2-003: also publishes
@@ -111,7 +246,7 @@ def main():
             _do_heartbeat(start_ts, signed_height, public_key_hex=pk_hex)
             last_heartbeat = now
         if now - last_poll >= config.POLL_INTERVAL:
-            signed_height = max(signed_height, _do_polling(sk, signed_blocks))
+            signed_height = max(signed_height, _do_polling(sk, state))
             last_poll = now
         # Sleep in 1s ticks so SIGTERM is responsive
         time.sleep(1)

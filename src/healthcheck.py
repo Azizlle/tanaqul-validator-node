@@ -14,6 +14,20 @@ HEARTBEATS_OK    = Counter("validator_heartbeats_ok_total",   "Successful heartb
 HEARTBEATS_FAIL  = Counter("validator_heartbeats_fail_total", "Failed heartbeats")
 BLOCKS_SIGNED    = Counter("validator_blocks_signed_total",   "Blocks successfully signed")
 SIGN_FAIL        = Counter("validator_sign_fail_total",       "Failed sign-block attempts")
+#: ⛔ THREE OUTCOMES, THREE COUNTERS. `blocks_signed_total` alone conflates a block this
+#: node VERIFIED with a legacy block it merely attested receipt of — so an operator
+#: watching it climb would read validation that is not happening. That is the exact
+#: failure this whole module replaces, moved into the metrics.
+BLOCKS_VALIDATED = Counter("validator_blocks_validated_total",
+                           "Blocks recomputed from their leaves and signed under tv2")
+BLOCKS_ATTESTED  = Counter("validator_blocks_attested_v1_total",
+                           "Legacy blocks signed as attestation-of-receipt, NOT validated")
+BLOCKS_REFUSED   = Counter("validator_blocks_refused_total",
+                           "Blocks this node checked, disagreed with, and reported")
+REFUSAL_FAIL     = Counter("validator_refusal_fail_total",
+                           "Refusals this node could not file — a disagreement nobody heard")
+CONTENTS_FAIL    = Counter("validator_contents_fail_total",
+                           "Block-contents fetches that failed, so nothing was verified")
 LAST_HEARTBEAT   = Gauge(  "validator_last_heartbeat_unix",   "Unix ts of last successful heartbeat")
 UPTIME_SECONDS   = Gauge(  "validator_uptime_seconds",        "Seconds since process start")
 
@@ -90,3 +104,25 @@ def start_health_server(port: int):
     t.start()
     logger.info(f"Health server listening on 0.0.0.0:{port} (paths: /health, /metrics)")
     return server
+
+
+def record_block_validated():
+    BLOCKS_VALIDATED.inc()
+    BLOCKS_SIGNED.inc()
+
+
+def record_block_attested_v1():
+    BLOCKS_ATTESTED.inc()
+    BLOCKS_SIGNED.inc()
+
+
+def record_block_refused():
+    BLOCKS_REFUSED.inc()
+
+
+def record_refusal_fail():
+    REFUSAL_FAIL.inc()
+
+
+def record_contents_fail():
+    CONTENTS_FAIL.inc()
