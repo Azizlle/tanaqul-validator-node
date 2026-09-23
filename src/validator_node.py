@@ -9,6 +9,7 @@ import signal
 import sys
 import time
 
+import uuid
 from datetime import datetime, timezone
 
 from src import config, client, crypto, healthcheck, verify
@@ -42,6 +43,27 @@ def _do_heartbeat(start_ts: float, signed_height: int, public_key_hex: str = Non
         logger.error(f"heartbeat failed: {e}")
 
 
+def _signing_identity() -> str:
+    """The validator id in the EXACT form the platform will rebuild it in.
+
+    ⛔ 100% OF REFUSALS LOST, SILENTLY, ON A COSMETIC ENV VALUE. The node signed
+    `TANAQUL_VALIDATOR_ID` verbatim into the `tr2` pre-image; the endpoint rebuilds that
+    string from a `uuid.UUID` body field, which canonicalises to lowercase-hyphenated.
+    Pydantic accepts uppercase and hyphen-free ids, so a perfectly valid-looking env value
+    produced `401 Invalid refusal signature` on every objection — while the heartbeat,
+    `/pending-blocks`, `/contents` and `/sign-block` all kept working, because `tv2` does
+    not contain the id. A green node, a green `/health`, and every disagreement deleted.
+
+    ⚠️ AN UNPARSEABLE ID IS PASSED THROUGH, NOT GUESSED. Test and staging deployments use
+    non-UUID ids; canonicalising must not invent one. The platform decides.
+    """
+    raw = (config.TANAQUL_VALIDATOR_ID or "").strip()
+    try:
+        return str(uuid.UUID(raw))
+    except (ValueError, AttributeError, TypeError):
+        return raw
+
+
 class PollState:
     """What this node has concluded, carried between polls.
 
@@ -60,9 +82,18 @@ class PollState:
         #: block number -> the hash THIS NODE computed and agreed with. Only ever written
         #: for a block that passed v2 verification.
         self.verified: dict = {}
-        #: block number -> the wire verdict already FILED, so a standing disagreement is
-        #: stated once rather than once per poll
+        #: ⛔ KEYED ON THE EVIDENCE, NOT JUST THE VERDICT. Suppressing on (block, verdict)
+        #: alone dropped a SECOND, materially different tampering of the same block: the
+        #: record exists to state WHICH hashes disagreed, and the stored evidence would
+        #: have been the first observation only, with no second page. The rate bound is the
+        #: point; the uniqueness key has to be the disagreement itself.
         self.refused: dict = {}
+
+
+def _evidence_key(v) -> tuple:
+    """What makes two refusals the SAME disagreement rather than merely the same verdict."""
+    return (verify.WIRE_VERDICTS[v.verdict], v.served_block_hash, v.computed_block_hash,
+            v.served_prev_hash, v.expected_prev_hash, v.match_root, v.event_root, v.tx_root)
 
 
 def _refuse(sk, state: "PollState", v, block_number: int) -> None:
@@ -75,6 +106,7 @@ def _refuse(sk, state: "PollState", v, block_number: int) -> None:
     """
     wire = verify.WIRE_VERDICTS[v.verdict]
     reported_at = datetime.now(timezone.utc).isoformat()
+    validator_id = _signing_identity()
 
     #: ⛔ ONE SET OF VALUES, TWO CONSUMERS — and it is built once so they cannot disagree.
     #: The platform rebuilds the `tr2` string FROM THE POSTED BODY and verifies it against
@@ -94,13 +126,13 @@ def _refuse(sk, state: "PollState", v, block_number: int) -> None:
     )
 
     message = verify.refusal_payload(
-        number=block_number, validator_id=config.TANAQUL_VALIDATOR_ID, verdict=wire,
+        number=block_number, validator_id=validator_id, verdict=wire,
         reported_at=reported_at, **facts)
     client.report_refusal(
         block_number=block_number, verdict=wire,
         signature_hex=crypto.sign_message(sk, message),
         reported_at=reported_at, **facts)
-    state.refused[block_number] = wire          #: only now
+    state.refused[block_number] = _evidence_key(v)   #: only now
     healthcheck.record_block_refused()
     logger.critical(f"REFUSED block #{block_number}: {wire} — {v.detail}")
 
@@ -149,8 +181,13 @@ def _do_polling(sk, state: "PollState") -> int:
         #: names. `state.verified` holds only blocks that passed v2 verification, so an
         #: attested legacy block cannot seed a chain check — that would be the platform's
         #: claim laundered through one step into something that looks verified.
+        #: ⛔ `merkle_root` IS SERVED HERE AND NOWHERE ELSE, and the genesis marker is
+        #: derived from it. Dropping it would reinstate the false accusation with the
+        #: checker still perfectly correct — the defect would live in the call, not the
+        #: code it calls.
         v = verify.check_block(contents, served_hash=served_hash,
-                               last_seen_hash=state.verified.get(n - 1))
+                               last_seen_hash=state.verified.get(n - 1),
+                               served_merkle_root=b.get("merkle_root") or "")
 
         if v.ok:
             message = verify.validation_payload(
@@ -196,7 +233,7 @@ def _do_polling(sk, state: "PollState") -> int:
             #: the report does not. The cost is one GET per poll per block in
             #: disagreement — bounded by blocks the platform is serving wrongly, not by
             #: chain size.
-            if state.refused.get(n) == verify.WIRE_VERDICTS[v.verdict]:
+            if state.refused.get(n) == _evidence_key(v):
                 continue
             try:
                 _refuse(sk, state, v, n)

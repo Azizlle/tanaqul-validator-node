@@ -39,3 +39,75 @@ def test_auth_failure_raises():
             assert "auth_failed" in str(e)
         else:
             raise AssertionError("expected BackendError")
+
+
+# ── the batch's new transport: 74 lines with no executed coverage ──────────
+#
+# ⛔ THE POLLING-LOOP TESTS MONKEYPATCH BOTH OF THESE WITH FAKES, so the real transport for
+# the entire new channel was never executed. Four mutations survived the whole suite: a
+# signed field dropped from the POSTed body, the auth headers removed, the int coercion
+# removed, and — the compounding one — an HTTP error returning `{}` instead of raising.
+#
+# ⚠️ THAT LAST ONE IS WHY THIS FILE MATTERS. `_do_polling`'s "a fetch failure is not a
+# disagreement" guard is well tested, but its PRECONDITION is that this module raises. With
+# `{}` returned, `check_block({})` raises KeyError -> CONTENTS_MALFORMED -> the node files a
+# SIGNED accusation because the platform returned a 503. Two halves of one guarantee living
+# in two files, and only one of them was guarded.
+
+def test_get_block_contents_AUTHENTICATES_and_coerces_the_block_number():
+    fake = MagicMock(status_code=200, json=lambda: {"block_number": 7})
+    with patch.object(client._S, "get", return_value=fake) as m:
+        client.get_block_contents("7")
+        url, kwargs = m.call_args[0][0], m.call_args[1]
+        assert url.endswith("/api/v1/validators/blocks/7/contents"), url
+        h = kwargs["headers"]
+        assert h["X-Validator-Id"] == "ci" and h["X-Validator-Api-Key"] == "ci", (
+            "the contents fetch went out unauthenticated")
+
+
+def test_get_block_contents_does_not_build_a_URL_from_UNCOERCED_input():
+    """⚠️ `int()` is not decoration: the block number is interpolated into a URL path."""
+    fake = MagicMock(status_code=200, json=lambda: {})
+    with patch.object(client._S, "get", return_value=fake) as m:
+        try:
+            client.get_block_contents("7/../../admin")
+        except (ValueError, TypeError):
+            return
+        assert "admin" not in m.call_args[0][0], "an uncoerced path segment reached the URL"
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("status", [400, 403, 404, 500, 503])
+def test_an_HTTP_ERROR_from_contents_RAISES_rather_than_returning_an_empty_dict(status):
+    """⛔ THE COMPOUNDING ONE. An empty dict is not "no contents" — it is a payload the
+    checker cannot read, which becomes a signed CONTENTS_MALFORMED accusation against a
+    platform that merely returned a 503."""
+    fake = MagicMock(status_code=status, text="boom")
+    with patch.object(client._S, "get", return_value=fake):
+        with pytest.raises(client.BackendError):
+            client.get_block_contents(1)
+
+
+def test_report_refusal_POSTS_EVERY_FIELD_THE_PRE_IMAGE_COMMITS():
+    """⛔ THE ENDPOINT REBUILDS THE SIGNED STRING FROM THIS BODY. A field committed by the
+    pre-image and missing from the body does not produce a wrong record — it produces NO
+    record, rejected at the door, on the channel that exists because a refusal had nowhere
+    to go. Derived from the pre-image's own signature, not from a list typed here."""
+    import inspect
+    from src import verify
+
+    fake = MagicMock(status_code=200, json=lambda: {"recorded": True})
+    committed = set(inspect.signature(verify.refusal_payload).parameters) - {
+        "number", "validator_id", "verdict", "reported_at"}
+    with patch.object(client._S, "post", return_value=fake) as m:
+        client.report_refusal(
+            block_number=1, verdict="HASH_MISMATCH", signature_hex="ab",
+            reported_at="R", **{k: ("x" if "count" not in k else 1) for k in committed})
+        body = m.call_args[1]["json"]
+
+    missing = committed - set(body)
+    assert not missing, f"the pre-image commits {sorted(missing)} and the body omits them"
+    for k in ("validator_id", "api_key", "block_number", "verdict", "signature"):
+        assert k in body, k

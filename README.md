@@ -55,9 +55,17 @@ the next poll — no restart needed.
 ## Verifying the node against the protocol
 
 `spec/agreement_vectors.json` holds the protocol's hashing vectors: inputs and the
-exact bytes both implementations must produce. The node's test suite runs them,
-and so does Tanaqul's own CI against its independent implementation — so if either
-side ever drifts, both go red before any signature is affected.
+exact bytes both implementations must produce. This repo's test suite runs them
+against the node's implementation, and Tanaqul's cross-repo CI job runs the same
+file against the platform's.
+
+**Which CI catches what**, stated exactly, because a vaguer promise here was
+wrong: a change to the *platform's* implementation reddens Tanaqul's CI; a change
+to the *node's* reddens this repo's CI. A change that edits the node's code and
+its vectors together would agree with itself — so it is caught instead by the
+correctness tests in `tests/test_verify.py`, which are written from the
+documented rules rather than from either implementation. That is why both kinds
+of test exist, and why neither is redundant.
 
 ```bash
 pip install -r requirements.txt pytest && pytest -q
@@ -65,7 +73,7 @@ pip install -r requirements.txt pytest && pytest -q
 
 The vectors prove the two sides *agree*. That they are *correct* is pinned
 separately, by tests written from the documented rules rather than from either
-implementation.
+implementation. Agreement alone would pin two copies of the same mistake.
 
 ## Where to run
 

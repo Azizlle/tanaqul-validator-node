@@ -164,6 +164,12 @@ def _contents(**over):
     return d
 
 
+def _mr(c):
+    """The `merkle_root` /pending-blocks would serve for this block: the match root."""
+    return verify.merkle_root([verify.sha256(verify.match_leaf(x))
+                               for x in c["match_leaves"]])
+
+
 def _expected_hash(c):
     return verify.hash_block_v2(
         number=c["block_number"], prev_hash=c["prev_hash"],
@@ -180,7 +186,7 @@ def _expected_hash(c):
 
 def test_a_block_that_recomputes_is_APPROVED():
     c = _contents()
-    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=c["prev_hash"])
+    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.ok is True and v.verdict == "OK", v
 
 
@@ -192,7 +198,7 @@ def test_a_TAMPERED_LEAF_is_caught_even_though_the_hash_is_self_consistent():
     c = _contents()
     honest = _expected_hash(c)
     tampered = _contents(event_leaves=[dict(c["event_leaves"][0], grams="999.0")])
-    v = verify.check_block(tampered, served_hash=honest, last_seen_hash=c["prev_hash"])
+    v = verify.check_block(tampered, served_hash=honest, last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.ok is False and v.verdict == "HASH_MISMATCH", v
     assert v.served_block_hash == honest
     assert v.computed_block_hash != honest
@@ -203,7 +209,7 @@ def test_a_BROKEN_CHAIN_is_refused_even_when_the_hash_recomputes():
     the block this node last saw — which is what a fork or a replayed history looks like."""
     c = _contents()
     v = verify.check_block(c, served_hash=_expected_hash(c),
-                           last_seen_hash="0x" + "99" * 32)
+                           last_seen_hash="0x" + "99" * 32, served_merkle_root=_mr(c))
     assert v.ok is False and v.verdict == "PREV_HASH_MISMATCH", v
 
 
@@ -211,7 +217,7 @@ def test_the_FIRST_block_a_node_sees_has_nothing_to_chain_to():
     """⛔ THE ADMIT CASE. A node with no history must not refuse everything — that is a
     refusal with no retry, which is a deletion."""
     c = _contents()
-    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None)
+    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None, served_merkle_root=_mr(c))
     assert v.ok is True, v
 
 
@@ -220,7 +226,7 @@ def test_a_LEGACY_block_is_not_validatable_and_is_not_refused_either():
     them. Refusing them would strand the chain; signing them as if verified would be the
     rubber stamp this replaces. They are reported as UNVALIDATABLE so the caller decides."""
     c = _contents(format_version=1, validatable=False)
-    v = verify.check_block(c, served_hash="0xwhatever", last_seen_hash=c["prev_hash"])
+    v = verify.check_block(c, served_hash="0xwhatever", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.ok is False and v.verdict == "UNVALIDATABLE", v
 
 
@@ -231,20 +237,25 @@ def test_COUNTS_disagreeing_with_the_LEAVES_is_its_own_verdict():
     refusal report actionable instead of just negative."""
     c = _contents()
     c["counts"]["event_count"] = 7          # one leaf served, seven declared
-    v = verify.check_block(c, served_hash="0xanything", last_seen_hash=c["prev_hash"])
+    v = verify.check_block(c, served_hash="0xanything", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.verdict == "COUNT_MISMATCH", v
     assert "seven" not in v.detail and "(1, 7, 0)" not in v.detail
     assert "(0, 7, 0)" in v.detail and "(0, 1, 0)" in v.detail, v.detail
 
 
-def test_GENESIS_is_not_held_to_a_predecessor_it_cannot_have():
-    """⛔ A refusal with no path to retry is a deletion. Genesis follows nothing, so
-    chaining it against whatever this node last saw would refuse the one block that is
-    correct by definition."""
-    c = _contents(is_genesis=True)
-    v = verify.check_block(c, served_hash=_expected_hash(c),
-                           last_seen_hash="0x" + "99" * 32)
-    assert v.ok is True, v
+#: ⛔ DELETED 2026-09-23, DELIBERATELY: `test_GENESIS_is_not_held_to_a_predecessor_it_
+#: cannot_have` ENCODED THE DEFECT. It set `is_genesis: True` in the served payload, passed
+#: a `last_seen_hash`, and asserted `ok is True` — so it pinned green the exact bypass an
+#: adversarial review later executed: a FORKED block flagged genesis, signed under tv2,
+#: with no refusal filed.
+#: Repairing the code turned it red, and the reflex there is to trust the test.
+#:
+#: It is NOT replaced by a rename. The property it should have asserted is split across two
+#: tests that assert DIFFERENT things on purpose:
+#:   * `test_GENESIS_is_recognised_from_the_MARKER_not_from_a_FLAG_the_platform_SETS`
+#:   * `test_the_platform_cannot_DECLARE_a_block_genesis_to_escape_the_chain_check`
+#: and the no-history admit it partly stood for is
+#: `test_the_FIRST_block_a_node_sees_has_nothing_to_chain_to`.
 
 
 def test_UNVALIDATABLE_does_NOT_earn_a_signed_REFUSAL():
@@ -253,7 +264,7 @@ def test_UNVALIDATABLE_does_NOT_earn_a_signed_REFUSAL():
     block accuses the platform of tampering on the strength of a format the node cannot
     read. Every legacy block on the chain would be reported as an attack."""
     c = _contents(format_version=1, validatable=False)
-    v = verify.check_block(c, served_hash="0xwhatever", last_seen_hash=c["prev_hash"])
+    v = verify.check_block(c, served_hash="0xwhatever", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.ok is False
     assert verify.should_refuse(v) is False, "a block the node could not check is not a refusal"
 
@@ -341,12 +352,15 @@ def test_every_REFUSABLE_verdict_maps_to_a_name_the_platform_ACCEPTS():
         "PREV_HASH_MISMATCH": "PREV_HASH_MISMATCH",
         "COUNT_MISMATCH": "CONTENTS_MALFORMED",
         "CONTENTS_MALFORMED": "CONTENTS_MALFORMED",
+        "MATCH_ROOT_MISMATCH": "HASH_MISMATCH",
         "UNVALIDATABLE": "FORMAT_NOT_VALIDATABLE",
+        "FORMAT_REFUSED": "FORMAT_NOT_VALIDATABLE",
     }
     for v in verify.WIRE_VERDICTS.values():
         assert v in verify.PLATFORM_REFUSAL_VERDICTS, v
     #: every refusable verdict the checker can actually emit has a wire name
-    for v in ("HASH_MISMATCH", "PREV_HASH_MISMATCH", "COUNT_MISMATCH", "CONTENTS_MALFORMED"):
+    for v in ("HASH_MISMATCH", "PREV_HASH_MISMATCH", "COUNT_MISMATCH", "CONTENTS_MALFORMED",
+              "MATCH_ROOT_MISMATCH", "FORMAT_REFUSED"):
         assert verify.should_refuse(verify.Verdict(ok=False, verdict=v, block_number=1))
         assert v in verify.WIRE_VERDICTS
 
@@ -362,7 +376,7 @@ def test_a_LEGACY_block_falls_back_to_v1_ATTESTATION_rather_than_being_dropped()
     distinguished cryptographically by which pre-image verifies, not by anything the node
     claims about itself — so this fallback cannot inflate a validated quorum."""
     c = _contents(format_version=1, validatable=False)
-    v = verify.check_block(c, served_hash="0xlegacy", last_seen_hash=c["prev_hash"])
+    v = verify.check_block(c, served_hash="0xlegacy", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.verdict == "UNVALIDATABLE"
     assert verify.should_refuse(v) is False
     assert verify.should_attest_v1(v) is True
@@ -384,14 +398,14 @@ def test_a_MALFORMED_payload_becomes_a_VERDICT_and_never_an_exception():
     A payload the node cannot parse is a disagreement it CAN state."""
     c = _contents()
     del c["event_leaves"][0]["vault_key"]
-    v = verify.check_block(c, served_hash="0xzz", last_seen_hash=c["prev_hash"])
+    v = verify.check_block(c, served_hash="0xzz", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.verdict == "CONTENTS_MALFORMED", v
     assert "vault_key" in v.detail, v.detail
 
     for missing in ("counts", "prev_hash", "hash_timestamp", "creator_id", "match_leaves"):
         broken = _contents()
         del broken[missing]
-        got = verify.check_block(broken, served_hash="0xzz", last_seen_hash=None)
+        got = verify.check_block(broken, served_hash="0xzz", last_seen_hash=None, served_merkle_root=_mr(c))
         assert got.verdict == "CONTENTS_MALFORMED", (missing, got)
 
 
@@ -402,7 +416,7 @@ def test_the_verdict_carries_THE_ROOTS_because_a_refusal_report_must_state_them(
     them — a second implementation, in the one place a second implementation is definitely
     a defect."""
     c = _contents()
-    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None)
+    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None, served_merkle_root=_mr(c))
     assert v.match_root == verify.merkle_root([]), v
     assert v.event_root == verify.merkle_root(
         [verify.sha256(verify.event_leaf(c["event_leaves"][0]))])
@@ -410,7 +424,7 @@ def test_the_verdict_carries_THE_ROOTS_because_a_refusal_report_must_state_them(
     assert (v.match_count, v.event_count, v.tx_count) == (0, 1, 0)
 
     #: and a HASH_MISMATCH carries them too — that is the verdict that gets reported
-    bad = verify.check_block(c, served_hash="0x" + "00" * 32, last_seen_hash=None)
+    bad = verify.check_block(c, served_hash="0x" + "00" * 32, last_seen_hash=None, served_merkle_root=_mr(c))
     assert bad.verdict == "HASH_MISMATCH"
     assert bad.event_root == v.event_root and bad.match_root == v.match_root
 
@@ -430,7 +444,7 @@ def test_EVERY_malformed_SHAPE_becomes_a_verdict_not_just_a_missing_key(mangle, 
     shape that is easiest to imagine, which is exactly why it was the only one written."""
     c = _contents()
     mangle(c)
-    v = verify.check_block(c, served_hash="0xzz", last_seen_hash=None)
+    v = verify.check_block(c, served_hash="0xzz", last_seen_hash=None, served_merkle_root=_mr(c))
     assert v.verdict == "CONTENTS_MALFORMED", (exc, v)
     assert exc in v.detail, v.detail
 
@@ -450,11 +464,191 @@ def test_a_BUG_IN_THE_NODE_is_not_reported_as_the_platform_sending_bad_data():
     verify.merkle_root = _explode
     try:
         with pytest.raises(RuntimeError) as caught:
-            verify.check_block(c, served_hash="0xzz", last_seen_hash=None)
+            verify.check_block(c, served_hash="0xzz", last_seen_hash=None, served_merkle_root=_mr(c))
         assert caught.value is boom
     finally:
         verify.merkle_root = real
 
     #: and the control — with the real function back, the same payload verifies
     assert verify.check_block(c, served_hash=_expected_hash(c),
-                              last_seen_hash=None).ok is True
+                              last_seen_hash=None, served_merkle_root=_mr(c)).ok is True
+
+
+# ── genesis, derived from an artifact rather than asserted by the platform ──
+
+GENESIS_ROOT = verify.sha256("genesis")
+
+
+def _genesis(**over):
+    d = dict(_contents(), block_number=1, prev_hash="0x" + "00" * 64,
+             creator_id="genesis", counts={"match_count": 0, "event_count": 0,
+                                           "tx_count": 0}, event_leaves=[])
+    d.update(over)
+    return d
+
+
+def test_GENESIS_is_recognised_from_the_MARKER_not_from_a_FLAG_the_platform_SETS():
+    """⛔ THE FALSE ACCUSATION THIS ROUND EXISTS TO PREVENT. The platform substitutes
+    `sha256("genesis")` for a genesis block's match_root; the node computed
+    `merkle_root([])` = `sha256("empty")` and therefore disagreed with a block that is
+    correct by construction — refusing it, and filing a `tr2`-SIGNED accusation that the
+    platform sealed something it cannot reproduce. Every node, every poll, forever.
+
+    ⛔ AND THE MARKER IS CHECKED, NOT TAKEN. `is_genesis` in the served contents is an
+    unsigned field chosen by the party being verified — committed by no pre-image — so
+    trusting it let the platform disable the chain check on any block it liked. The node
+    now derives it: `merkle_root` from /pending-blocks must equal a CONSTANT this node
+    holds. The platform cannot assert genesis, only exhibit it."""
+    assert GENESIS_ROOT != verify.merkle_root([]), "the two roots must actually differ"
+
+    c = _genesis()
+    honest = verify.hash_block_v2(
+        number=1, prev_hash=c["prev_hash"], match_root=GENESIS_ROOT,
+        event_root=verify.merkle_root([]), tx_root=verify.merkle_root([]),
+        match_count=0, event_count=0, tx_count=0,
+        hash_timestamp=c["hash_timestamp"], creator_id="genesis")
+
+    v = verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                           served_merkle_root=GENESIS_ROOT)
+    assert v.verdict != "HASH_MISMATCH", f"the node refused a correct genesis block: {v}"
+    assert verify.should_refuse(v) is False, "a correct genesis must never be accused"
+
+
+def test_the_platform_cannot_DECLARE_a_block_genesis_to_escape_the_chain_check():
+    """⛔ THE BYPASS. With `is_genesis` taken from the payload, a FORKED block flagged
+    genesis was signed under tv2 — the strong signature that survives the cutover — with no
+    refusal. The marker is a constant, so a block that is not genesis cannot claim to be."""
+    c = _contents(is_genesis=True)          # the payload LIES
+    v = verify.check_block(c, served_hash=_expected_hash(c),
+                           last_seen_hash="0x" + "99" * 32,
+                           served_merkle_root=verify.merkle_root([]))
+    assert v.verdict == "PREV_HASH_MISMATCH", f"a forked block claimed genesis: {v}"
+    assert verify.should_refuse(v) is True
+
+
+def test_a_TAMPERED_merkle_root_column_is_caught():
+    """⛔ THE PLATFORM SIGNS tv2 WITH `block.merkle_root` — a COLUMN — while the node
+    merkles the leaves. Nothing compared the two, so a column edited away from the leaves
+    it summarises was invisible to both sides of the seam."""
+    c = _contents()
+    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None,
+                           served_merkle_root="0x" + "77" * 32)
+    assert v.verdict == "MATCH_ROOT_MISMATCH", v
+    assert verify.should_refuse(v) is True
+
+
+# ── the legacy ceiling ──────────────────────────────────────────────────────
+
+def test_a_LEGACY_block_AT_OR_BELOW_the_ceiling_is_attested_not_refused():
+    """⚠️ They stay offered so they remain rescuable, and a refusal with no path back is a
+    deletion. Below the ceiling, legacy is a closed historical set."""
+    c = _contents(block_number=verify.LEGACY_BLOCK_CEILING,
+                  format_version=1, validatable=False)
+    v = verify.check_block(c, served_hash="0xold", last_seen_hash=None,
+                           served_merkle_root=verify.merkle_root([]))
+    assert v.verdict == "UNVALIDATABLE"
+    assert verify.should_attest_v1(v) is True and verify.should_refuse(v) is False
+
+
+def test_a_NEW_block_claiming_v1_is_REFUSED_because_the_flag_is_UNSIGNED():
+    """⛔ `format_version` IS A FIELD THE PLATFORM SETS AND NO PRE-IMAGE COMMITS, so one
+    field turned verification off: a block whose hash does not match its own contents was
+    signed as an attestation, and with the cutover off that still reaches `quorum_met`.
+
+    A platform that wanted to avoid being checked would set it. The ceiling makes legacy a
+    CLOSED HISTORICAL SET rather than a switch — above it, claiming v1 is a refusal."""
+    n = verify.LEGACY_BLOCK_CEILING + 1
+    c = _contents(block_number=n, format_version=1, validatable=False)
+    v = verify.check_block(c, served_hash="0xnew", last_seen_hash=None,
+                           served_merkle_root=verify.merkle_root([]))
+    assert v.verdict == "FORMAT_REFUSED", v
+    assert verify.should_refuse(v) is True
+    assert verify.should_attest_v1(v) is False
+    assert verify.WIRE_VERDICTS[v.verdict] == "FORMAT_NOT_VALIDATABLE"
+
+
+def test_the_ceiling_is_a_PINNED_NUMBER_not_a_moving_target():
+    """⚠️ Measured from the live chain when the node shipped, not remembered. A ceiling
+    derived at runtime from whatever the platform reports would be the same unsigned switch
+    one level up."""
+    assert isinstance(verify.LEGACY_BLOCK_CEILING, int)
+    assert verify.LEGACY_BLOCK_CEILING >= 198
+
+
+# ── contentless: one predicate, shared with the platform ───────────────────
+
+def test_a_CONTENTLESS_block_is_NOT_signed_as_VALIDATED():
+    """⛔ THE SILENT FAILURE. `/contents` reports `validatable` from `format_version >= 2`
+    alone, while the platform's `sign_block` ALSO requires content — two renderings of one
+    question, and the node honoured the weaker one. It verified a contentless block, signed
+    `tv2`, and the platform never tried that pre-image: 401 forever, no refusal filed, no
+    alarm, the block's commission never distributed and nothing reporting it.
+
+    ⚠️ What a v2 signature proves is POSSESSION OF THE LEAF SET. With no events and no
+    transactions there is no leaf set to possess — both roots are a constant — so a node
+    doing no work could format the string."""
+    c = _genesis()
+    honest = verify.hash_block_v2(
+        number=1, prev_hash=c["prev_hash"], match_root=GENESIS_ROOT,
+        event_root=verify.merkle_root([]), tx_root=verify.merkle_root([]),
+        match_count=0, event_count=0, tx_count=0,
+        hash_timestamp=c["hash_timestamp"], creator_id="genesis")
+    v = verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                           served_merkle_root=GENESIS_ROOT)
+    assert v.ok is False, "a contentless block must not be signed as validated"
+    assert v.verdict == "UNVALIDATABLE" and verify.should_attest_v1(v) is True
+
+
+def test_a_CONTENTLESS_block_ABOVE_the_ceiling_is_refused():
+    """⛔ THE PLATFORM'S OWN RULE FORBIDS IT — a block exists when custody moves, and the
+    seal refuses a contentless one structurally. Above the ceiling such a block cannot have
+    been sealed honestly, so attesting it would launder a state the chain disallows."""
+    n = verify.LEGACY_BLOCK_CEILING + 1
+    c = _contents(block_number=n, counts={"match_count": 0, "event_count": 0, "tx_count": 0},
+                  event_leaves=[])
+    v = verify.check_block(c, served_hash="0xx", last_seen_hash=None,
+                           served_merkle_root=verify.merkle_root([]))
+    assert verify.should_refuse(v) is True, v
+    assert verify.WIRE_VERDICTS[v.verdict] in verify.PLATFORM_REFUSAL_VERDICTS
+
+
+def test_check_block_REQUIRES_the_served_merkle_root():
+    """⛔ NO DEFAULT. A `served_merkle_root=None` default would let every existing call site
+    keep the old behaviour silently — the shape where a fix ships inert."""
+    import inspect
+    sig = inspect.signature(verify.check_block)
+    p = sig.parameters["served_merkle_root"]
+    assert p.default is inspect.Parameter.empty, (
+        "served_merkle_root has a default, so a caller that never passes it keeps the "
+        "genesis defect with no error")
+
+
+def test_a_CONTENT_BEARING_GENESIS_uses_the_SUBSTITUTED_match_root():
+    """⛔ THE SUBSTITUTION MIRRORS THE PLATFORM'S RULE, WHICH IS KEYED ON THE MARKER AND NOT
+    ON BLOCK #1 OR ON EMPTINESS. `recompute_block_roots` applies it to ANY block whose
+    stored `merkle_root` is `sha256("genesis")`, so the node must too or it disagrees with
+    a block the platform considers correct — the false-accusation defect again.
+
+    ⚠️ REACHABLE ONLY WITH CONTENT, and that is why this test exists. The contentless rule
+    added alongside makes a v2 check unreachable for an EMPTY genesis, so the substitution
+    was measured by nothing: the mutation that merkles the match set instead SURVIVED. A
+    structural fix leaving its neighbour's guard unable to fail is the new boundary, and
+    this is it. Genesis sealed WITH an initial custody event is exactly what §7b's "a block
+    exists when custody moves" would produce on a relaunch."""
+    c = _contents(block_number=1, prev_hash="0x" + "00" * 64, creator_id="genesis")
+    honest = verify.hash_block_v2(
+        number=1, prev_hash=c["prev_hash"], match_root=GENESIS_ROOT,
+        event_root=verify.merkle_root(
+            [verify.sha256(verify.event_leaf(c["event_leaves"][0]))]),
+        tx_root=verify.merkle_root([]), match_count=0, event_count=1, tx_count=0,
+        hash_timestamp=c["hash_timestamp"], creator_id="genesis")
+
+    v = verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                           served_merkle_root=GENESIS_ROOT)
+    assert v.ok is True, f"a content-bearing genesis was refused: {v}"
+    assert v.match_root == GENESIS_ROOT, (
+        "the node merkled the match set instead of using the substituted marker")
+
+    #: the control — merkling the (empty) match set gives a DIFFERENT root, so this test
+    #: can tell the two apart rather than passing because they coincide
+    assert verify.merkle_root([]) != GENESIS_ROOT

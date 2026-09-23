@@ -12,7 +12,11 @@
     "of an empty string; merkle pairs concatenate hex TEXT, not decoded bytes;",
     "hash_timestamp is used verbatim). Agreement without those would just pin two",
     "copies of the same mistake.",
-    "Field values are deliberately synthetic. These vectors exercise the FORMAT."
+    "Field values are deliberately synthetic. These vectors exercise the FORMAT.",
+    "PROVENANCE: the outputs were produced by the validator node's implementation and",
+    "then verified against the platform's before being committed. Which side a vector",
+    "was born from matters: it is why AGREEMENT alone is not enough, and why each side",
+    "keeps correctness tests written from the documented rules."
   ],
   "sha256": [
     {
@@ -286,6 +290,130 @@
         "reported_at": "2026-09-23T09:00:01+00:00"
       },
       "output": "tr2|v-2|1|FORMAT_NOT_VALIDATABLE||||||||0|0|0|||2026-09-23T09:00:01+00:00"
+    }
+  ],
+  "effective_match_root": [
+    {
+      "fields": {
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e",
+        "computed_match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d"
+      },
+      "output": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"
+    },
+    {
+      "fields": {
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e",
+        "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+      },
+      "output": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"
+    },
+    {
+      "fields": {
+        "stored_merkle_root": "0xabababababababababababababababababababababababababababababababab",
+        "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+      },
+      "output": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+    },
+    {
+      "fields": {
+        "stored_merkle_root": "",
+        "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+      },
+      "output": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+    },
+    {
+      "fields": {
+        "stored_merkle_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
+        "computed_match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d"
+      },
+      "output": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d"
+    },
+    {
+      "fields": {
+        "stored_merkle_root": "0XAEEBAD4A796FCC2E15DC4C6061B45ED9B373F26ADFC798CA7D2D8CC58182718E",
+        "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+      },
+      "output": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+    }
+  ],
+  "carries_validatable_content": [
+    {
+      "fields": {
+        "event_count": 0,
+        "tx_count": 0
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "event_count": 1,
+        "tx_count": 0
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "event_count": 0,
+        "tx_count": 1
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "event_count": 3,
+        "tx_count": 2
+      },
+      "output": true
+    }
+  ],
+  "block_is_validatable": [
+    {
+      "fields": {
+        "format_version": 2,
+        "event_count": 1,
+        "tx_count": 0
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "format_version": 2,
+        "event_count": 0,
+        "tx_count": 1
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "format_version": 2,
+        "event_count": 0,
+        "tx_count": 0
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "format_version": 1,
+        "event_count": 5,
+        "tx_count": 5
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "format_version": 2,
+        "event_count": 3,
+        "tx_count": 2
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "format_version": 0,
+        "event_count": 1,
+        "tx_count": 1
+      },
+      "output": false
     }
   ]
 }
