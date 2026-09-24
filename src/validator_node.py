@@ -190,11 +190,33 @@ def _do_polling(sk, state: "PollState") -> int:
         return max(state.signed) if state.signed else 0
 
     highest = max(state.signed) if state.signed else 0
+    #: ⛔⛔ AN ABSENT FIELD IS NOT A BENIGN ONE, AND THIS IS WHERE THEY WERE MANUFACTURED.
+    #: These reads were `b.get("block_hash") or ""`, `b.get("merkle_root") or ""` and
+    #: `int(b.get("block_number", 0))`, so a missing field became an empty string or a zero
+    #: and the decision carried on as though it had been told something. Measured once:
+    #: a NULL `merkle_root` disarmed the match-root guard AND turned a correct genesis
+    #: block into a `tr2`-signed accusation. That was closed inside `check_block`; the
+    #: category is closed HERE, at the site the value is invented.
+    #:
+    #: ⚠️ A pending entry this node cannot read is not a block it disagrees with — it is
+    #: skipped, counted and logged. Never signed, never accused, and never renumbered to
+    #: block zero by a default.
+    REQUIRED = ("block_number", "block_hash", "merkle_root")
+
+    def _usable(entry: dict):
+        absent = [k for k in REQUIRED if not entry.get(k)]
+        if absent:
+            healthcheck.record_contents_fail()
+            logger.error(f"pending entry {entry.get('block_number', '?')} is missing "
+                         f"{absent} and cannot be checked; skipped, nothing signed")
+            return None
+        return int(entry["block_number"])
+
     #: ascending, so a block's predecessor is verified before it is judged
-    for b in sorted(blocks, key=lambda x: int(x.get("block_number", 0))):
-        n = int(b.get("block_number", 0))
-        served_hash = b.get("block_hash") or ""
-        if not n or not served_hash or n in state.signed:
+    _usable_blocks = [(n, b) for b, n in ((b, _usable(b)) for b in blocks) if n is not None]
+    for n, b in sorted(_usable_blocks, key=lambda t: t[0]):
+        served_hash = b["block_hash"]
+        if n in state.signed:
             continue
 
         #: ⛔ A FETCH FAILURE IS NOT A DISAGREEMENT, AND IT IS NOT A REASON TO SIGN. Both
@@ -219,7 +241,7 @@ def _do_polling(sk, state: "PollState") -> int:
         #: code it calls.
         v = verify.check_block(contents, served_hash=served_hash,
                                last_seen_hash=state.verified.get(n - 1),
-                               served_merkle_root=b.get("merkle_root") or "")
+                               served_merkle_root=b["merkle_root"])
 
         if v.ok:
             message = verify.validation_payload(

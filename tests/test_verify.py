@@ -149,9 +149,15 @@ def test_a_MISSING_leaf_field_is_refused_not_defaulted(kind, build, good, droppe
 # ── the decision: verify, then sign or refuse ───────────────────────────────
 
 def _contents(**over):
-    """A block whose served hash is the one its own leaves produce."""
+    """A block whose served hash is the one its own leaves produce.
+
+    ⚠️ ABOVE THE LEGACY CEILING, DELIBERATELY. These fixtures used block #42, which is
+    BELOW it — so once the gate stopped reading `format_version` and started deciding
+    legacy-versus-tampered from the block NUMBER, every one of them silently moved onto the
+    attest path. They had never exercised the branch that actually verifies.
+    """
     d = {
-        "block_number": 42, "format_version": 2, "validatable": True,
+        "block_number": 500, "format_version": 2, "validatable": True,
         "prev_hash": "0x" + "11" * 32, "hash_timestamp": "2026-09-23T00:00:00+00:00",
         "creator_id": "sys", "is_genesis": False,
         "counts": {"match_count": 0, "event_count": 1, "tx_count": 0},
@@ -225,7 +231,9 @@ def test_a_LEGACY_block_is_not_validatable_and_is_not_refused_either():
     """⛔ PRE-v2 BLOCKS CANNOT BE RECOMPUTED — no event_root or tx_root exists for
     them. Refusing them would strand the chain; signing them as if verified would be the
     rubber stamp this replaces. They are reported as UNVALIDATABLE so the caller decides."""
-    c = _contents(format_version=1, validatable=False)
+    c = _contents(block_number=10, format_version=1, validatable=False,
+                  counts={"match_count": 0, "event_count": 0, "tx_count": 0},
+                  event_leaves=[])
     v = verify.check_block(c, served_hash="0xwhatever", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.ok is False and v.verdict == "UNVALIDATABLE", v
 
@@ -263,7 +271,9 @@ def test_UNVALIDATABLE_does_NOT_earn_a_signed_REFUSAL():
     reads as "refuse" to any caller that checks one boolean — and refusing a legacy
     block accuses the platform of tampering on the strength of a format the node cannot
     read. Every legacy block on the chain would be reported as an attack."""
-    c = _contents(format_version=1, validatable=False)
+    c = _contents(block_number=10, format_version=1, validatable=False,
+                  counts={"match_count": 0, "event_count": 0, "tx_count": 0},
+                  event_leaves=[])
     v = verify.check_block(c, served_hash="0xwhatever", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
     assert v.ok is False
     assert verify.should_refuse(v) is False, "a block the node could not check is not a refusal"
@@ -375,8 +385,9 @@ def test_a_LEGACY_block_falls_back_to_v1_ATTESTATION_rather_than_being_dropped()
     records it as an attestation of receipt, which is exactly what it is. The two are
     distinguished cryptographically by which pre-image verifies, not by anything the node
     claims about itself — so this fallback cannot inflate a validated quorum."""
-    c = _contents(format_version=1, validatable=False)
-    v = verify.check_block(c, served_hash="0xlegacy", last_seen_hash=c["prev_hash"], served_merkle_root=_mr(c))
+    c = _contents(block_number=150, format_version=1, validatable=False)
+    v = verify.check_block(c, served_hash="0xlegacy", last_seen_hash=c["prev_hash"],
+                           served_merkle_root=_mr(c))
     assert v.verdict == "UNVALIDATABLE"
     assert verify.should_refuse(v) is False
     assert verify.should_attest_v1(v) is True
@@ -537,6 +548,23 @@ def test_a_TAMPERED_merkle_root_column_is_caught():
     assert verify.should_refuse(v) is True
 
 
+#: ⛔ TWO TESTS DELETED HERE 2026-09-24, AND NEITHER IS REPLACED BY A RENAME.
+#:
+#:   * `test_a_NEW_block_claiming_v1_is_REFUSED_because_the_flag_is_UNSIGNED`
+#:   * `test_a_MISSING_format_version_is_not_DEFAULTED_to_legacy`
+#:
+#: Both asserted how the gate responds to `format_version` — one to a lie, one to an
+#: absence. **The gate no longer reads that field at all**, so the property each asserted
+#: has ceased to exist rather than moved: there is nothing left to lie about and nothing
+#: left to omit.
+#:
+#: ⚠️ What replaces them is NOT a same-shaped test. It is
+#: `test_the_GATE_reads_NO_FIELD_the_pre_image_does_not_COMMIT`, which asserts the
+#: CATEGORY is empty, and `test_the_DECISION_still_works_with_format_version_ABSENT_or_
+#: LYING`, which proves the field is inert in both directions. Stated plainly because the
+#: last deletion in this file was justified by a comment naming three successors, two of
+#: which asserted the opposite property.
+
 # ── the legacy ceiling ──────────────────────────────────────────────────────
 
 def test_a_LEGACY_block_AT_OR_BELOW_the_ceiling_is_attested_not_refused():
@@ -549,22 +577,6 @@ def test_a_LEGACY_block_AT_OR_BELOW_the_ceiling_is_attested_not_refused():
     assert v.verdict == "UNVALIDATABLE"
     assert verify.should_attest_v1(v) is True and verify.should_refuse(v) is False
 
-
-def test_a_NEW_block_claiming_v1_is_REFUSED_because_the_flag_is_UNSIGNED():
-    """⛔ `format_version` IS A FIELD THE PLATFORM SETS AND NO PRE-IMAGE COMMITS, so one
-    field turned verification off: a block whose hash does not match its own contents was
-    signed as an attestation, and with the cutover off that still reaches `quorum_met`.
-
-    A platform that wanted to avoid being checked would set it. The ceiling makes legacy a
-    CLOSED HISTORICAL SET rather than a switch — above it, claiming v1 is a refusal."""
-    n = verify.LEGACY_BLOCK_CEILING + 1
-    c = _contents(block_number=n, format_version=1, validatable=False)
-    v = verify.check_block(c, served_hash="0xnew", last_seen_hash=None,
-                           served_merkle_root=verify.merkle_root([]))
-    assert v.verdict == "FORMAT_REFUSED", v
-    assert verify.should_refuse(v) is True
-    assert verify.should_attest_v1(v) is False
-    assert verify.WIRE_VERDICTS[v.verdict] == "FORMAT_NOT_VALIDATABLE"
 
 
 def test_the_ceiling_is_a_PINNED_NUMBER_not_a_moving_target():
@@ -775,17 +787,6 @@ def test_the_SERVED_validatable_flag_cannot_manufacture_an_ACCUSATION():
     assert v.ok is True, v
 
 
-def test_a_MISSING_format_version_is_not_DEFAULTED_to_legacy():
-    """⛔ `.get("format_version", 1)` IN THE MODULE WHOSE RULE IS THAT EVERY FIELD IS
-    INDEXED. A payload that omits the field was silently read as v1 and, above the ceiling,
-    refused — an accusation manufactured by an absence."""
-    c = _contents(block_number=verify.LEGACY_BLOCK_CEILING + 1)
-    del c["format_version"]
-    v = verify.check_block(c, served_hash="0xzz", last_seen_hash=None,
-                           served_merkle_root=_mr(c))
-    assert v.verdict == "CONTENTS_MALFORMED", v
-    assert "format_version" in v.detail
-
 
 def test_a_MATCH_ROOT_MISMATCH_states_BOTH_SIDES_of_the_disagreement():
     """⛔ A REFUSAL THAT SAYS ONLY "NO" IS NOT EVIDENCE. This verdict populated the node's
@@ -812,3 +813,107 @@ def test_a_MATCH_ROOT_MISMATCH_states_BOTH_SIDES_of_the_disagreement():
     #: why this verdict has to exist separately from HASH_MISMATCH. The other half of the
     #: disagreement is the platform's own column, which it already holds.
     assert v.computed_block_hash == honest
+
+
+# ── THE CLASS, not the instance ────────────────────────────────────────────
+
+def test_the_GATE_reads_NO_FIELD_the_pre_image_does_not_COMMIT():
+    """⛔⛔ THE CLASS BEHIND THREE ROUNDS OF FINDINGS. Each round closed the instance a seat
+    named and left the category intact, so the next round found it in the next field:
+
+        round 1  `format_version`  — one unsigned field turned verification off
+        round 2  `is_genesis`      — replaced by a check against a PUBLIC constant, still
+                                     unsigned, still a bypass at any height
+        round 2  `validatable`     — could turn a good block into a signed accusation
+
+    The general form is one sentence: **the node's decision depended on a field the
+    verified party supplies and no signed pre-image commits.** A fix that makes one such
+    field safe moves the defect to the next one; the only fix that closes it empties the
+    category.
+
+    ⭐ SO THE ALLOWED SET IS DERIVED FROM `hash_block_v2`'s OWN SIGNATURE. Every term of the
+    v2 pre-image is committed by the hash the node is checking, so a lie about any of them
+    changes that hash and is caught by the arithmetic. Anything else is a field the platform
+    can set freely — and the gate must not read it.
+
+    ⚠️ This is the test, not the fix: a fourth field cannot be introduced without failing
+    here. Inexpressible rather than remembered."""
+    import ast
+    import inspect
+    import textwrap
+
+    #: the pre-image's terms, read off the function that builds it
+    committed = set(inspect.signature(verify.hash_block_v2).parameters)
+
+    #: how each served key reaches a committed term. The VALUES are checked against
+    #: `committed` below, so this mapping cannot quietly admit a term the hash omits.
+    SERVED_TO_TERM = {
+        "block_number": "number", "prev_hash": "prev_hash",
+        "hash_timestamp": "hash_timestamp", "creator_id": "creator_id",
+        "counts": "match_count",            # carries all three
+        "match_leaves": "match_root", "event_leaves": "event_root",
+        "tx_leaves": "tx_root",
+    }
+    unknown = {t for t in SERVED_TO_TERM.values() if t not in committed}
+    assert not unknown, f"the mapping claims terms the pre-image does not commit: {unknown}"
+
+    #: ⛔ AND THE MAPPING MUST BE INJECTIVE, or the allowed set can be widened by ALIASING.
+    #: Checking only that every VALUE is a committed term is not enough: adding
+    #: `"format_version": "number"` passes that check — `number` really is committed — and
+    #: quietly re-admits the exact field this whole class is about. Measured: that mutation
+    #: SURVIVED. One served key per committed term makes the alias a collision.
+    terms = list(SERVED_TO_TERM.values())
+    dupes = {t for t in terms if terms.count(t) > 1}
+    assert not dupes, (
+        f"two served keys claim the same pre-image term {sorted(dupes)}. One of them is an "
+        f"ALIAS, and an alias is how an uncommitted field re-enters the allowed set while "
+        f"every value still looks committed.")
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(verify._check_block)))
+    read: set[str] = set()
+    for n in ast.walk(tree):
+        #: contents["x"]
+        if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
+                and n.value.id == "contents" and isinstance(n.slice, ast.Constant)):
+            read.add(n.slice.value)
+        #: contents.get("x", ...)
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "get" and isinstance(n.func.value, ast.Name)
+                and n.func.value.id == "contents" and n.args
+                and isinstance(n.args[0], ast.Constant)):
+            read.add(n.args[0].value)
+
+    assert read, "the scan found no field reads at all — it is pointed at the wrong thing"
+    uncommitted = read - set(SERVED_TO_TERM)
+    assert not uncommitted, (
+        f"the gate reads {sorted(uncommitted)}, which the v2 pre-image does not commit. "
+        f"A field the verified party can set freely must not influence whether or how "
+        f"verification happens — that is the defect this platform has now shipped three "
+        f"times in three different fields. Read it for diagnostics if you must; do not "
+        f"decide on it.")
+
+
+def test_the_DECISION_still_works_with_format_version_ABSENT_or_LYING():
+    """⛔ THE CLASS, DEMONSTRATED. `format_version` is not committed, so the node no longer
+    reads it — which means a payload that omits it, or lies about it in either direction,
+    changes nothing. Round one's blocker cannot be expressed."""
+    c = _contents(block_number=500)
+    honest = _expected_hash(c)
+
+    for fv in (1, 2, 99, None):
+        probe = _contents(block_number=500)
+        if fv is None:
+            del probe["format_version"]
+        else:
+            probe["format_version"] = fv
+        v = verify.check_block(probe, served_hash=honest, last_seen_hash=None,
+                               served_merkle_root=_mr(probe))
+        assert v.ok is True, (
+            f"format_version={fv} changed the outcome for a block that verifies: {v}")
+
+    #: and a block that does NOT verify is refused above the ceiling whatever it claims
+    bad = _contents(block_number=500)
+    bad["format_version"] = 1
+    v = verify.check_block(bad, served_hash="0x" + "00" * 32, last_seen_hash=None,
+                           served_merkle_root=_mr(bad))
+    assert v.verdict == "HASH_MISMATCH" and verify.should_refuse(v), v

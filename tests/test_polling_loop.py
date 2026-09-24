@@ -127,6 +127,11 @@ def sk():
 
 GENESIS = "0x" + "11" * 32
 
+#: ⚠️ ABOVE THE LEGACY CEILING. The loop fixtures numbered blocks from 1, which is below
+#: it, so once legacy-versus-tampered became a question about the block NUMBER they all
+#: moved onto the attest path and stopped exercising verification at all.
+B = verify.LEGACY_BLOCK_CEILING
+
 
 # ── the happy path, and what makes it a validation rather than a stamp ──────
 
@@ -135,16 +140,16 @@ def test_a_GOOD_block_is_signed_over_the_tv2_pre_image_it_COMPUTED(be, sk):
     `tx_root` are served by no endpoint, so a signature over a string containing them is
     the proof of work — it could not have been produced by a node that did not build the
     leaves. Signing the block hash instead proves only that a string was received."""
-    honest = be.add(1, prev_hash=GENESIS)
+    honest = be.add(B + 1, prev_hash=GENESIS)
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
 
-    assert [s["n"] for s in be.signed] == [1]
+    assert [s["n"] for s in be.signed] == [B + 1]
     assert be.refusals == []
 
-    c = be.blocks[1][0]
+    c = be.blocks[B + 1][0]
     expected_msg = verify.validation_payload(
-        number=1, block_hash=honest, prev_hash=GENESIS,
+        number=B + 1, block_hash=honest, prev_hash=GENESIS,
         match_root=verify.merkle_root([]),
         event_root=verify.merkle_root([verify.sha256(verify.event_leaf(c["event_leaves"][0]))]),
         tx_root=verify.merkle_root([]),
@@ -159,7 +164,7 @@ def test_a_GOOD_block_is_signed_over_the_tv2_pre_image_it_COMPUTED(be, sk):
 def test_a_block_is_only_marked_SIGNED_when_the_platform_ACCEPTED_it(be, sk):
     """⚠️ A submit that failed must be retried, or one transient 500 silently drops this
     node out of the quorum for that block permanently."""
-    be.add(1, prev_hash=GENESIS)
+    be.add(B + 1, prev_hash=GENESIS)
 
     def _boom(n, sig, approved=True):
         raise validator_node.client.BackendError("HTTP 503")
@@ -167,11 +172,11 @@ def test_a_block_is_only_marked_SIGNED_when_the_platform_ACCEPTED_it(be, sk):
     validator_node.client.sign_block = _boom
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
-    assert 1 not in state.signed
+    assert B + 1 not in state.signed
 
     validator_node.client.sign_block = be.sign_block
     validator_node._do_polling(sk, state)
-    assert 1 in state.signed and [s["n"] for s in be.signed] == [1]
+    assert B + 1 in state.signed and [s["n"] for s in be.signed] == [B + 1]
 
 
 # ── the attack the loop exists to catch ────────────────────────────────────
@@ -181,9 +186,9 @@ def test_a_TAMPERED_LEAF_is_REFUSED_and_REPORTED_not_signed(be, sk):
     whose leaves say something else. The old loop signed the served hash and could not have
     noticed. Now the recomputation disagrees, nothing is signed, and the objection is filed
     under this node's own key."""
-    honest = be.add(1, prev_hash=GENESIS, events=2,
+    honest = be.add(B + 1, prev_hash=GENESIS, events=2,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])   # serve the honest hash with tampered leaves
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])   # serve the honest hash with tampered leaves
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
 
@@ -207,15 +212,15 @@ def test_a_REFUSAL_is_filed_ONCE_not_once_per_poll(be, sk):
     ⚠️ But it is RE-VERIFIED every poll, because a repaired block must be signable without
     restarting the fleet. Only the REPORT is suppressed, and only while the verdict is
     unchanged."""
-    honest = be.add(1, prev_hash=GENESIS,
+    honest = be.add(B + 1, prev_hash=GENESIS,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
     state = validator_node.PollState()
     for _ in range(5):
         validator_node._do_polling(sk, state)
 
     assert len(be.refusals) == 1, "one disagreement, one report"
-    assert be.contents_calls == [1, 1, 1, 1, 1], "but re-checked every poll"
+    assert be.contents_calls == [B + 1] * 5, "but re-checked every poll"
     assert be.signed == []
 
 
@@ -223,16 +228,16 @@ def test_a_REPAIRED_block_is_signed_on_the_next_poll_without_a_restart(be, sk):
     """⛔ A REFUSAL WITH NO PATH BACK IS A DELETION. If the platform fixes the block, this
     node must sign it — otherwise a single transient corruption strands the block forever
     and the operator's only remedy is restarting every node in the fleet."""
-    honest = be.add(1, prev_hash=GENESIS,
+    honest = be.add(B + 1, prev_hash=GENESIS,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
     assert len(be.refusals) == 1 and be.signed == []
 
-    be.blocks[1][0]["event_leaves"][0]["grams"] = "1.0"    # repaired
+    be.blocks[B + 1][0]["event_leaves"][0]["grams"] = "1.0"    # repaired
     validator_node._do_polling(sk, state)
-    assert [s["n"] for s in be.signed] == [1]
+    assert [s["n"] for s in be.signed] == [B + 1]
     assert len(be.refusals) == 1
 
 
@@ -242,12 +247,12 @@ def test_a_BROKEN_CHAIN_is_refused_against_the_block_this_node_VERIFIED(be, sk):
     """⛔ THE PREDECESSOR IS THE ONE THIS NODE CHECKED, never the one the platform names.
     Chaining against a served `prev_hash` would be comparing the platform's claim to
     itself."""
-    h1 = be.add(1, prev_hash=GENESIS)
-    be.add(2, prev_hash="0x" + "99" * 32)         # does not follow #1
+    h1 = be.add(B + 1, prev_hash=GENESIS)
+    be.add(B + 2, prev_hash="0x" + "99" * 32)         # does not follow #1
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
 
-    assert [s["n"] for s in be.signed] == [1]
+    assert [s["n"] for s in be.signed] == [B + 1]
     assert [r["verdict"] for r in be.refusals] == ["PREV_HASH_MISMATCH"]
     r = be.refusals[0]
     assert r["observed_prev_hash"] == "0x" + "99" * 32
@@ -258,10 +263,10 @@ def test_a_block_whose_PREDECESSOR_was_never_verified_is_not_chain_checked(be, s
     """⚠️ THE NODE HAS AN OPINION ONLY WHERE IT HAS ONE. A node that starts mid-chain, or
     is offered #7 without #6, has nothing to compare against — refusing on that basis
     would accuse the platform of a fork every time a node restarts."""
-    be.add(7, prev_hash="0x" + "abc" * 21 + "a")
+    be.add(B + 7, prev_hash="0x" + "abc" * 21 + "a")
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
-    assert [s["n"] for s in be.signed] == [7]
+    assert [s["n"] for s in be.signed] == [B + 7]
     assert be.refusals == []
 
 
@@ -270,14 +275,15 @@ def test_an_ATTESTED_legacy_block_does_NOT_become_a_verified_predecessor(be, sk)
     NOT seed the chain check for its successor. If it did, this node would be checking
     block #2 against a hash it never recomputed, which is the platform's claim laundered
     through one extra step into something that looks verified."""
-    be.add(1, prev_hash=GENESIS, format_version=1, validatable=False, serve_hash="0xlegacy")
-    be.add(2, prev_hash="0xsomething-else")
+    be.add(150, prev_hash=GENESIS, format_version=1, validatable=False,
+           events=0, serve_hash="0xlegacy")
+    be.add(B + 2, prev_hash="0xsomething-else")
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
 
-    assert [s["n"] for s in be.signed] == [1, 2]
+    assert [s["n"] for s in be.signed] == [150, B + 2]
     assert be.refusals == [], "block #2 had no VERIFIED predecessor, so no chain opinion"
-    assert 1 not in state.verified and 2 in state.verified
+    assert B + 1 not in state.verified and B + 2 in state.verified
 
 
 # ── legacy and failure ──────────────────────────────────────────────────────
@@ -287,11 +293,12 @@ def test_a_LEGACY_block_is_attested_over_the_BARE_HASH_and_counted_separately(be
     rescuable — but over the v1 pre-image, and counted as an attestation. The platform
     decides which scheme a signature is by trying v2 FIRST and falling back, so this can
     never inflate a validated quorum."""
-    be.add(1, prev_hash=GENESIS, format_version=1, validatable=False, serve_hash="0xdeadbeef")
+    be.add(150, prev_hash=GENESIS, format_version=1, validatable=False,
+           events=0, serve_hash="0xdeadbeef")
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
 
-    assert [s["n"] for s in be.signed] == [1]
+    assert [s["n"] for s in be.signed] == [150]
     assert be.refusals == [], "a format this node cannot read is not an accusation"
     assert sk.last == "deadbeef", "the v1 pre-image is the bare hash"
 
@@ -301,17 +308,17 @@ def test_a_CONTENTS_FETCH_FAILURE_signs_nothing_and_accuses_nobody(be, sk):
     disagreement — filing one would put a signed accusation on the objection channel because
     a load balancer hiccuped. And falling back to signing the served hash would restore the
     exact behaviour this replaces, on the one path where nobody would look for it."""
-    be.add(1, prev_hash=GENESIS)
+    be.add(B + 1, prev_hash=GENESIS)
     be.contents_error = "contents HTTP 503"
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
 
     assert be.signed == [] and be.refusals == []
-    assert 1 not in state.signed
+    assert B + 1 not in state.signed
 
     be.contents_error = None
     validator_node._do_polling(sk, state)
-    assert [s["n"] for s in be.signed] == [1], "and it is retried once the fetch works"
+    assert [s["n"] for s in be.signed] == [B + 1], "and it is retried once the fetch works"
 
 
 def test_a_FAILED_REFUSAL_is_retried_rather_than_recorded_as_filed(be, sk):
@@ -319,9 +326,9 @@ def test_a_FAILED_REFUSAL_is_retried_rather_than_recorded_as_filed(be, sk):
     before the platform accepted it means one 503 permanently silences this node's
     objection to a tampered block — the failure the whole channel exists to prevent,
     reintroduced by the fix for the load amplifier."""
-    honest = be.add(1, prev_hash=GENESIS,
+    honest = be.add(B + 1, prev_hash=GENESIS,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
 
     def _boom(**kw):
         raise validator_node.client.BackendError("HTTP 503")
@@ -329,20 +336,20 @@ def test_a_FAILED_REFUSAL_is_retried_rather_than_recorded_as_filed(be, sk):
     validator_node.client.report_refusal = _boom
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
-    assert 1 not in state.refused
+    assert B + 1 not in state.refused
 
     validator_node.client.report_refusal = be.report_refusal
     validator_node._do_polling(sk, state)
     assert len(be.refusals) == 1
-    assert state.refused[1][0] == "HASH_MISMATCH", state.refused[1]
+    assert state.refused[B + 1][0] == "HASH_MISMATCH", state.refused[B + 1]
 
 
 def test_a_block_already_signed_is_not_re_fetched(be, sk):
-    be.add(1, prev_hash=GENESIS)
+    be.add(B + 1, prev_hash=GENESIS)
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
     validator_node._do_polling(sk, state)
-    assert be.contents_calls == [1] and len(be.signed) == 1
+    assert be.contents_calls == [B + 1] and len(be.signed) == 1
 
 
 def test_the_REPORTED_BODY_rebuilds_the_SIGNED_BYTES_exactly(be, sk):
@@ -353,9 +360,9 @@ def test_the_REPORTED_BODY_rebuilds_the_SIGNED_BYTES_exactly(be, sk):
 
     ⚠️ This is the platform's check, performed here. The two are built from one dict so
     divergence is inexpressible; this proves that is actually so rather than intended."""
-    honest = be.add(1, prev_hash=GENESIS, events=3,
+    honest = be.add(B + 1, prev_hash=GENESIS, events=3,
                     tamper=lambda c: c["event_leaves"][1].__setitem__("metal", "Silver"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
     validator_node._do_polling(sk, validator_node.PollState())
 
     assert len(be.refusals) == 1
@@ -370,7 +377,7 @@ def test_a_CONTENTS_FETCH_FAILURE_leaves_NO_TRACE_in_the_node_s_state(be, sk):
     """⚠️ Not signed, not verified — and not recorded as refused either. Writing a fetch
     failure into the refusal map would make the node believe it had filed an objection it
     never filed, which is the suppression guard turned into a silencer."""
-    be.add(1, prev_hash=GENESIS)
+    be.add(B + 1, prev_hash=GENESIS)
     be.contents_error = "contents HTTP 503"
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
@@ -383,7 +390,7 @@ def test_the_loop_passes_the_SERVED_merkle_root_through_to_the_check(be, sk, mon
     """⛔ `/pending-blocks` ALREADY SERVES `merkle_root`, and it is `match_root` under its
     older name. The genesis marker is derived from it, so a loop that dropped it would
     reinstate the false accusation with the checker still correct."""
-    be.add(1, prev_hash=GENESIS)
+    be.add(B + 1, prev_hash=GENESIS)
     seen = {}
     real = validator_node.verify.check_block
 
@@ -393,7 +400,7 @@ def test_the_loop_passes_the_SERVED_merkle_root_through_to_the_check(be, sk, mon
 
     monkeypatch.setattr(validator_node.verify, "check_block", spy)
     validator_node._do_polling(sk, validator_node.PollState())
-    assert seen["mr"] == be.blocks[1][2], "the served merkle_root never reached the checker"
+    assert seen["mr"] == be.blocks[B + 1][2], "the served merkle_root never reached the checker"
 
 
 def test_a_GENESIS_block_is_ATTESTED_not_refused(be, sk):
@@ -406,7 +413,7 @@ def test_a_GENESIS_block_is_ATTESTED_not_refused(be, sk):
 
     assert be.refusals == [], f"the node accused the platform over genesis: {be.refusals}"
     assert [s["n"] for s in be.signed] == [1], "genesis was not signed at all"
-    assert 1 not in state.verified, "a contentless block must not seed the chain"
+    assert B + 1 not in state.verified, "a contentless block must not seed the chain"
 
 
 # ── identity ───────────────────────────────────────────────────────────────
@@ -438,15 +445,15 @@ def test_a_MATERIALLY_DIFFERENT_refusal_on_the_same_block_is_still_FILED(be, sk)
     (block, verdict) alone meant a second, different tampering of the same block was
     dropped silently: the stored evidence is the first observation only, and no second page
     fires. The rate bound is right; the uniqueness key was wrong for evidence."""
-    honest = be.add(1, prev_hash=GENESIS, events=2,
+    honest = be.add(B + 1, prev_hash=GENESIS, events=2,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
     assert len(be.refusals) == 1
 
     #: same verdict, a DIFFERENT observation
-    be.blocks[1][0]["event_leaves"][1]["metal"] = "Silver"
+    be.blocks[B + 1][0]["event_leaves"][1]["metal"] = "Silver"
     validator_node._do_polling(sk, state)
     assert len(be.refusals) == 2, "a different disagreement on the same block was swallowed"
     assert be.refusals[0]["expected_block_hash"] != be.refusals[1]["expected_block_hash"]
@@ -470,9 +477,9 @@ def test_blocks_are_judged_in_ASCENDING_ORDER(be, sk):
     continuity check into "no verified predecessor, admit" — the check stays present, reads
     correct, and stops being able to fail. Three seats independently deleted `sorted()` with
     the suite green."""
-    h1 = be.add(1, prev_hash=GENESIS)
-    be.add(2, prev_hash=h1)
-    be.add(3, prev_hash="0x" + "99" * 32)          # does NOT follow #2
+    h1 = be.add(B + 1, prev_hash=GENESIS)
+    be.add(B + 2, prev_hash=h1)
+    be.add(B + 3, prev_hash="0x" + "99" * 32)          # does NOT follow #2
 
     #: the platform serves them newest-first — the node must not take that order
     order = []
@@ -490,7 +497,7 @@ def test_blocks_are_judged_in_ASCENDING_ORDER(be, sk):
     finally:
         validator_node.verify.check_block = real_check
 
-    assert order == [1, 2, 3], f"blocks were judged out of order: {order}"
+    assert order == [B + 1, B + 2, B + 3], f"blocks were judged out of order: {order}"
     assert [r["verdict"] for r in be.refusals] == ["PREV_HASH_MISMATCH"], (
         "the broken chain at #3 was not detected, because its predecessor was unverified")
 
@@ -498,17 +505,17 @@ def test_blocks_are_judged_in_ASCENDING_ORDER(be, sk):
 def test_a_REPAIRED_block_CLEARS_its_refusal_record(be, sk):
     """⛔ WITHOUT THE RESET, A BLOCK THAT IS FIXED AND THEN BREAKS AGAIN IS NEVER RE-FILED —
     the suppression that stops a flood becomes the thing that hides the second incident."""
-    honest = be.add(1, prev_hash=GENESIS,
+    honest = be.add(B + 1, prev_hash=GENESIS,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
     state = validator_node.PollState()
     validator_node._do_polling(sk, state)
-    assert 1 in state.refused and len(be.refusals) == 1
+    assert B + 1 in state.refused and len(be.refusals) == 1
 
-    be.blocks[1][0]["event_leaves"][0]["grams"] = "1.0"      # repaired
+    be.blocks[B + 1][0]["event_leaves"][0]["grams"] = "1.0"      # repaired
     validator_node._do_polling(sk, state)
-    assert 1 not in state.refused, "a signed block kept its refusal record"
-    assert [s["n"] for s in be.signed] == [1]
+    assert B + 1 not in state.refused, "a signed block kept its refusal record"
+    assert [s["n"] for s in be.signed] == [B + 1]
 
 
 def test_each_OUTCOME_increments_ITS_OWN_counter(be, sk):
@@ -520,11 +527,12 @@ def test_each_OUTCOME_increments_ITS_OWN_counter(be, sk):
         "validator_blocks_refused_total", "validator_contents_fail_total",
         "validator_blocks_signed_total")}
 
-    h1 = be.add(1, prev_hash=GENESIS)                                   # validated
-    be.add(2, prev_hash=h1, format_version=1, validatable=False, serve_hash="0xold")  # attested
-    honest3 = be.add(3, prev_hash=h1, events=2,
+    h1 = be.add(B + 1, prev_hash=GENESIS)                                   # validated
+    be.add(150, prev_hash=h1, format_version=1, validatable=False,
+           events=0, serve_hash="0xold")   # attested: at or below the ceiling
+    honest3 = be.add(B + 3, prev_hash=h1, events=2,
                      tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "9.0"))
-    be.blocks[3] = (be.blocks[3][0], honest3, be.blocks[3][2])          # refused
+    be.blocks[B + 3] = (be.blocks[B + 3][0], honest3, be.blocks[B + 3][2])          # refused
     validator_node._do_polling(sk, validator_node.PollState())
 
     d = {n: _counter(n) - before[n] for n in before}
@@ -538,7 +546,7 @@ def test_each_OUTCOME_increments_ITS_OWN_counter(be, sk):
 
 def test_a_CONTENTS_FAILURE_increments_its_own_counter_and_signs_nothing(be, sk):
     before = _counter("validator_contents_fail_total")
-    be.add(1, prev_hash=GENESIS)
+    be.add(B + 1, prev_hash=GENESIS)
     be.contents_error = "contents HTTP 503"
     validator_node._do_polling(sk, validator_node.PollState())
     assert _counter("validator_contents_fail_total") - before == 1
@@ -562,9 +570,9 @@ def test_a_DISCARDED_refusal_is_stated_ONCE_and_not_retried_for_ever(be, sk):
 
     ⚠️ AND THE BOUND IS PER OBSERVATION, not per block: a genuinely new third observation
     is attempted once more, and says so once more."""
-    honest = be.add(1, prev_hash=GENESIS, events=3,
+    honest = be.add(B + 1, prev_hash=GENESIS, events=3,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
 
     seen = {"n": 0}
 
@@ -579,7 +587,7 @@ def test_a_DISCARDED_refusal_is_stated_ONCE_and_not_retried_for_ever(be, sk):
     assert seen["n"] == 1, "the first observation was not filed"
 
     #: a DIFFERENT observation, same verdict -> attempted once, discarded, stated once
-    be.blocks[1][0]["event_leaves"][1]["metal"] = "METAL_B"
+    be.blocks[B + 1][0]["event_leaves"][1]["metal"] = "METAL_B"
     before = _counter("validator_refusal_fail_total")
     validator_node._do_polling(sk, state)
     assert seen["n"] == 2
@@ -594,7 +602,7 @@ def test_a_DISCARDED_refusal_is_stated_ONCE_and_not_retried_for_ever(be, sk):
         f"at POLL_INTERVAL=15 that is thousands of doomed POSTs a day per block")
 
     #: a THIRD, genuinely different observation is still attempted once
-    be.blocks[1][0]["event_leaves"][2]["metal"] = "METAL_C"
+    be.blocks[B + 1][0]["event_leaves"][2]["metal"] = "METAL_C"
     validator_node._do_polling(sk, state)
     assert seen["n"] == 3, "a new observation was swallowed by the suppression"
 
@@ -602,10 +610,55 @@ def test_a_DISCARDED_refusal_is_stated_ONCE_and_not_retried_for_ever(be, sk):
 def test_a_refusal_the_platform_ACCEPTS_is_recorded_and_suppressed(be, sk):
     """⭐ THE CONTROL. Without it the assertion above is satisfied by a node that never
     records anything, which would re-file every poll forever."""
-    honest = be.add(1, prev_hash=GENESIS,
+    honest = be.add(B + 1, prev_hash=GENESIS,
                     tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
-    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    be.blocks[B + 1] = (be.blocks[B + 1][0], honest, be.blocks[B + 1][2])
     state = validator_node.PollState()
     for _ in range(4):
         validator_node._do_polling(sk, state)
-    assert len(be.refusals) == 1 and 1 in state.refused
+    assert len(be.refusals) == 1 and B + 1 in state.refused
+
+
+# ── CLASS 2: an absent value is not a benign one ───────────────────────────
+
+@pytest.mark.parametrize("missing", ["block_number", "block_hash", "merkle_root"])
+def test_a_PENDING_ENTRY_missing_a_field_is_SKIPPED_and_COUNTED_not_defaulted(be, sk, missing):
+    """⛔⛔ THE SECOND CLASS, CLOSED AT THE CATEGORY. Distinct from the first: these fields
+    ARE committed by the pre-image — the defect was reading an ABSENCE as a benign value.
+    The loop assembled its inputs with `b.get("block_hash") or ""`,
+    `b.get("merkle_root") or ""` and `int(b.get("block_number", 0))`, so a missing field
+    became an empty string or a zero and the decision carried on as if it had been told
+    something.
+
+    Measured once already: a NULL `merkle_root` disarmed the match-root guard AND turned a
+    correct genesis block into a `tr2`-signed accusation. That was fixed inside
+    `check_block`; this is the site the value is MANUFACTURED, which is where the next
+    instance would have come from.
+
+    ⚠️ A pending entry the node cannot read is not a block it disagrees with. It is skipped,
+    counted, and logged — never signed, never accused, and never silently renumbered to
+    block zero."""
+    honest = be.add(B + 1, prev_hash=GENESIS)
+    entry = {"block_number": B + 1, "block_hash": honest,
+             "merkle_root": be.blocks[B + 1][2]}
+    del entry[missing]
+    validator_node.client.get_pending_blocks = lambda: [entry]
+
+    before = _counter("validator_contents_fail_total")
+    state = validator_node.PollState()
+    validator_node._do_polling(sk, state)
+
+    assert be.signed == [], f"a pending entry with no {missing} was signed anyway"
+    assert be.refusals == [], f"a pending entry with no {missing} produced an accusation"
+    assert state.signed == set() and state.verified == {} and state.refused == {}
+    assert _counter("validator_contents_fail_total") - before == 1, (
+        f"a pending entry with no {missing} was dropped without being counted, so it is "
+        f"visible nowhere")
+
+
+def test_a_COMPLETE_pending_entry_is_still_processed(be, sk):
+    """⭐ THE CONTROL. Without it the test above is satisfied by a loop that skips
+    everything."""
+    be.add(B + 1, prev_hash=GENESIS)
+    validator_node._do_polling(sk, validator_node.PollState())
+    assert [s["n"] for s in be.signed] == [B + 1]

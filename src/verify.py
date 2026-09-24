@@ -210,46 +210,35 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
 
     counts_pre = contents["counts"]
     _ec, _tc = int(counts_pre["event_count"]), int(counts_pre["tx_count"])
-    #: ⚠️ THE NODE DECIDES THIS ITSELF and only then agrees with the served flag. Taking
-    #: `validatable` on trust is how one unsigned field turned verification off.
-    #: ⛔ THE NODE'S OWN COMPUTATION IS THE ANSWER, and the served flag is advisory. It
-    #: used to be a second condition, so an unsigned platform field still controlled the
-    #: gate — in the ACCUSING direction: clearing `validatable` on a good v2 block above
-    #: the ceiling produced a `tr2`-signed accusation. A block this node can verify is
-    #: never refused because the platform said not to bother.
-    #:
-    #: ⚠️ `format_version` is INDEXED, not defaulted. `.get(..., 1)` sat here in the module
-    #: whose stated rule is that every field is indexed, so a payload that merely omitted
-    #: the field was read as legacy and, above the ceiling, refused — an accusation
-    #: manufactured by an absence.
-    #: ⚠️ READ ONCE, USED TWICE. `format_version` was indexed in the gate and indexed
-    #: again in the detail string, so a `.get(..., 1)` slipped into the GATE was masked:
-    #: the detail's own index still raised and produced the same verdict by another route.
-    #: A guard whose mutation is absorbed by a neighbouring line is measured by nothing.
-    _fv = contents["format_version"]
-    _v2 = block_is_validatable(_fv, _ec, _tc)
 
-    #: ⛔ CHECKED BEFORE ANYTHING IS COMPUTED, so the node never reports a mismatch it
-    #: manufactured out of a shape it cannot read — but the ANSWER now depends on the block
-    #: NUMBER, not on the platform's say-so alone. Pre-v2 blocks cannot be recomputed (v1
-    #: hashed a timestamp that was never persisted) and a contentless block has no leaf set
-    #: to possess; both are honest states BELOW the ceiling and forbidden above it.
-    if not _v2:
-        _old = number <= LEGACY_BLOCK_CEILING
+    #: ⛔⛔ THE DECISION READS ONLY WHAT THE HASH COMMITS. Three rounds of findings were one
+    #: class: the gate depended on a field the verified party supplies and no pre-image
+    #: commits — `format_version`, then `is_genesis`, then `validatable`. Closing each
+    #: instance moved the defect to the next field. The category is empty now, and
+    #: `test_the_GATE_reads_NO_FIELD_the_pre_image_does_not_COMMIT` derives the allowed set
+    #: from `hash_block_v2`'s own signature so a fourth cannot be added without failing.
+    #:
+    #: ⭐ `format_version` IS NOT READ AT ALL. The node does not need to be told the format:
+    #: a block whose leaves reproduce its stored hash IS v2, and one whose leaves do not is
+    #: either legacy or tampered — a question the BLOCK NUMBER answers, and the number is
+    #: committed. Being told is the part that was forgeable.
+    _legacy = number <= LEGACY_BLOCK_CEILING
+
+    #: ⛔ NO LEAF SET, NOTHING TO POSSESS. `carries_validatable_content` reads the COUNTS,
+    #: which the pre-image commits, so a lie about them changes the hash and is caught.
+    if not carries_validatable_content(_ec, _tc):
         return Verdict(
-            ok=False, verdict=(UNVALIDATABLE if _old else FORMAT_REFUSED),
+            ok=False, verdict=(UNVALIDATABLE if _legacy else FORMAT_REFUSED),
             block_number=number, served_block_hash=served_hash,
             event_count=_ec, tx_count=_tc,
             detail=(
-                f"block #{number} is format_version {_fv} with "
-                f"{_ec} event(s) and {_tc} transaction(s); the node cannot reach a v2 hash "
-                f"for it. "
-                + ("At or below the legacy ceiling "
-                   f"({LEGACY_BLOCK_CEILING}) that is expected — not a disagreement."
-                   if _old else
-                   f"ABOVE the legacy ceiling ({LEGACY_BLOCK_CEILING}) it cannot have been "
-                   f"sealed honestly: every block after the ceiling is v2 and carries "
-                   f"custody content, so this is refused rather than attested.")))
+                f"block #{number} carries {_ec} event(s) and {_tc} transaction(s), so there "
+                f"is no leaf set to possess and no v2 signature could prove anything. "
+                + (f"At or below the legacy ceiling ({LEGACY_BLOCK_CEILING}) that is "
+                   f"expected — not a disagreement."
+                   if _legacy else
+                   f"ABOVE the legacy ceiling ({LEGACY_BLOCK_CEILING}) a block exists only "
+                   f"when custody moves, so this cannot have been sealed honestly.")))
 
     counts = contents["counts"]
     matches, events, txs = (contents["match_leaves"], contents["event_leaves"],
@@ -337,7 +326,7 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     #: ⚠️ CHECKED AFTER THE HASH IS COMPUTED, DELIBERATELY, so the report can state BOTH
     #: SIDES. Returning early left both hash fields empty and the row read "hash mismatch,
     #: expected (no hash)" — a refusal that says only "no" is not evidence.
-    if not is_genesis and computed_match_root != served_merkle_root:
+    if not is_genesis and not _legacy and computed_match_root != served_merkle_root:
         return Verdict(
             ok=False, verdict=MATCH_ROOT_MISMATCH, block_number=number,
             served_block_hash=served_hash, computed_block_hash=computed,
@@ -345,6 +334,19 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
             detail=f"block #{number} stores merkle_root {served_merkle_root} but its "
                    f"{len(matches)} served match leaf/leaves merkle to "
                    f"{computed_match_root}.")
+
+    #: ⚠️ AND BELOW THE CEILING A FAILED RECOMPUTATION IS NOT AN ACCUSATION. v1 hashed a
+    #: timestamp that was never persisted, so no arithmetic here can reach those blocks —
+    #: which is indistinguishable from tampering without trusting a format field. The
+    #: ceiling is the honest discriminator: a closed historical set, attested; everything
+    #: after it must reproduce.
+    if computed != served_hash and _legacy:
+        return Verdict(
+            ok=False, verdict=UNVALIDATABLE, block_number=number,
+            served_block_hash=served_hash, computed_block_hash=computed, **_roots,
+            detail=f"block #{number} does not reproduce its stored hash and sits at or "
+                   f"below the legacy ceiling ({LEGACY_BLOCK_CEILING}); pre-v2 blocks "
+                   f"hashed a timestamp that was never persisted, so this is expected.")
 
     if computed != served_hash:
         return Verdict(
@@ -471,7 +473,16 @@ WIRE_VERDICTS = {
 
 
 def block_is_validatable(format_version: int, event_count: int, tx_count: int) -> bool:
-    """Whether this node can reach the block's committed hash — the WHOLE condition.
+    """The PLATFORM's rule for whether a block can be validated, mirrored for agreement.
+
+    ⛔ THE GATE IN THIS MODULE DOES NOT CALL IT, DELIBERATELY, AND THAT IS NOT DEAD CODE.
+    It takes `format_version` — a field no pre-image commits — so using it to decide would
+    reopen the class that produced three rounds of findings. Its consumer is the SEAM: it
+    is a vector kind in `spec/agreement_vectors.json`, run here and against the platform's
+    own implementation, so the two sides provably agree about a rule the platform applies
+    and this node deliberately declines to depend on.
+    #: (`test_the_GATE_reads_NO_FIELD_the_pre_image_does_not_COMMIT` is what would fail if
+    #: someone wired it back into the decision.)
 
     ⛔ THE PLATFORM ANSWERS THIS IN ONE PLACE AND THE NODE MUST NOT ANSWER IT IN ANOTHER.
     `/contents` used to report `validatable` from `format_version >= 2` alone while the
