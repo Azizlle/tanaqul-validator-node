@@ -159,6 +159,63 @@ FORMAT_REFUSED = "FORMAT_REFUSED"
 
 
 @dataclass(frozen=True)
+class Committed:
+    """Exactly the terms the v2 pre-image commits — and nothing else survives parsing.
+
+    ⛔⛔ THIS TYPE IS THE CLASS FIX. Four rounds of findings were one defect: the gate
+    decided on a field the verified party supplies and no pre-image commits. The third
+    repair was an AST detector that looked for reads of the payload dict, and a §14 seat
+    defeated it with `_c = contents` — 180 tests green, the blocker restored verbatim.
+
+    ⭐ A DETECTOR PINS A SPELLING; A TYPE PINS THE PROPERTY. The gate never receives the
+    payload, so `format_version` is not merely unread — it is **unreachable**. Adding a
+    field here is the only way to make one reachable, and
+    `test_the_GATE_CANNOT_REACH_a_field_the_pre_image_does_not_COMMIT` checks these fields
+    against `hash_block_v2`'s signature as a BIJECTION, both directions.
+
+    ⚠️ The leaf lists stand for the three roots: they are what the roots are computed from,
+    which is the only reason a list belongs on a record of committed terms.
+    """
+    number: int
+    prev_hash: str
+    hash_timestamp: str
+    creator_id: str
+    match_count: int
+    event_count: int
+    tx_count: int
+    match_leaves: tuple
+    event_leaves: tuple
+    tx_leaves: tuple
+
+
+def parse_contents(contents: dict) -> Committed:
+    """Build the committed record from a served payload, at the boundary.
+
+    ⛔ EVERY FIELD IS INDEXED. A `.get(..., default)` here would let an absence become a
+    value and travel inward as though it had been served — the second class, which already
+    cost a NULL `merkle_root` turning a correct genesis block into a signed accusation.
+    A payload missing any committed term is not a payload this protocol describes.
+
+    ⚠️ Fields the payload carries and the hash does NOT commit — `format_version`,
+    `validatable`, `is_genesis` — are dropped here, deliberately and silently. They may be
+    logged by a caller; they may not reach a decision.
+    """
+    counts = contents["counts"]
+    return Committed(
+        number=int(contents["block_number"]),
+        prev_hash=contents["prev_hash"],
+        hash_timestamp=contents["hash_timestamp"],
+        creator_id=contents["creator_id"],
+        match_count=int(counts["match_count"]),
+        event_count=int(counts["event_count"]),
+        tx_count=int(counts["tx_count"]),
+        match_leaves=tuple(contents["match_leaves"]),
+        event_leaves=tuple(contents["event_leaves"]),
+        tx_leaves=tuple(contents["tx_leaves"]),
+    )
+
+
+@dataclass(frozen=True)
 class Verdict:
     """What the node concluded, and enough evidence to say why in a refusal report.
 
@@ -194,7 +251,7 @@ def should_refuse(v: Verdict) -> bool:
                          CONTENTS_MALFORMED, MATCH_ROOT_MISMATCH, FORMAT_REFUSED)
 
 
-def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
+def _check_block(c: Committed, served_hash: str, last_seen_hash: str | None,
                  served_merkle_root: str) -> Verdict:
     """Recompute a block from its served leaves and judge it.
 
@@ -206,10 +263,8 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     has a predecessor can never acquire one, and a refusal with no path to retry is a
     deletion, not a check.
     """
-    number = int(contents["block_number"])
-
-    counts_pre = contents["counts"]
-    _ec, _tc = int(counts_pre["event_count"]), int(counts_pre["tx_count"])
+    number = c.number
+    _ec, _tc = c.event_count, c.tx_count
 
     #: ⛔⛔ THE DECISION READS ONLY WHAT THE HASH COMMITS. Three rounds of findings were one
     #: class: the gate depended on a field the verified party supplies and no pre-image
@@ -240,16 +295,13 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
                    f"ABOVE the legacy ceiling ({LEGACY_BLOCK_CEILING}) a block exists only "
                    f"when custody moves, so this cannot have been sealed honestly.")))
 
-    counts = contents["counts"]
-    matches, events, txs = (contents["match_leaves"], contents["event_leaves"],
-                            contents["tx_leaves"])
+    matches, events, txs = c.match_leaves, c.event_leaves, c.tx_leaves
 
     #: ⛔ THE COUNTS ARE HASHED SEPARATELY FROM THE ROOTS, so a payload whose counts
     #: disagree with its own leaf lists is incoherent before any hashing happens. It
     #: would surface as a hash mismatch anyway; naming it distinctly is the difference
     #: between a refusal report that can be acted on and one that says only "no".
-    served_counts = (int(counts["match_count"]), int(counts["event_count"]),
-                     int(counts["tx_count"]))
+    served_counts = (c.match_count, c.event_count, c.tx_count)
     actual_counts = (len(matches), len(events), len(txs))
     if served_counts != actual_counts:
         return Verdict(
@@ -287,7 +339,16 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     #: and refused it, filing a SIGNED accusation that the platform sealed something it
     #: cannot reproduce. `merkle_root` comes from /pending-blocks and is compared to a
     #: constant this node holds: the platform can exhibit genesis, not declare it.
-    is_genesis = (served_merkle_root == GENESIS_MARKER)
+    #: ⛔ THE MARKER IS BOUND TO BLOCK #1. `GENESIS_MARKER` is `sha256("genesis")` — a
+    #: PUBLIC constant published in this repo — so recognising it alone let the platform
+    #: exhibit genesis at ANY height, and a marker block's match_root is the marker rather
+    #: than the merkle of its leaves. A §14 seat swapped a whole match set at block #500
+    #: (grams 1.000 -> 999999.000) and the node still returned OK: **the entire match set
+    #: was uncommitted, at any height, forever.**
+    #:
+    #: ⚠️ Genesis is block #1 by construction — `POST /blocks/genesis` creates #1 — so the
+    #: number is the binding the marker lacks, and the number IS committed by the hash.
+    is_genesis = (served_merkle_root == GENESIS_MARKER and number == 1)
 
     match_root = effective_match_root(served_merkle_root, computed_match_root)
     event_root = merkle_root([sha256(event_leaf(f)) for f in events])
@@ -295,15 +356,15 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
 
     computed = hash_block_v2(
         number=number,
-        prev_hash=contents["prev_hash"],
+        prev_hash=c.prev_hash,
         match_root=match_root,
         event_root=event_root,
         tx_root=tx_root,
         match_count=served_counts[0],
         event_count=served_counts[1],
         tx_count=served_counts[2],
-        hash_timestamp=contents["hash_timestamp"],
-        creator_id=contents["creator_id"],
+        hash_timestamp=c.hash_timestamp,
+        creator_id=c.creator_id,
     )
 
     #: everything the `tr2` pre-image commits, computed once and carried on every verdict
@@ -311,8 +372,8 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     _roots = dict(match_root=match_root, event_root=event_root, tx_root=tx_root,
                   match_count=served_counts[0], event_count=served_counts[1],
                   tx_count=served_counts[2],
-                  hash_timestamp=contents["hash_timestamp"],
-                  creator_id=contents["creator_id"])
+                  hash_timestamp=c.hash_timestamp,
+                  creator_id=c.creator_id)
 
     #: ⛔ THE CHECK THIS MODULE EXISTS FOR. Until now the node signed `served_hash`
     #: itself, so a block whose stored hash was internally consistent but whose CONTENT
@@ -326,11 +387,16 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     #: ⚠️ CHECKED AFTER THE HASH IS COMPUTED, DELIBERATELY, so the report can state BOTH
     #: SIDES. Returning early left both hash fields empty and the row read "hash mismatch,
     #: expected (no hash)" — a refusal that says only "no" is not evidence.
-    if not is_genesis and not _legacy and computed_match_root != served_merkle_root:
+    #: ⛔ AND THE CEILING DOES NOT DISABLE THIS. It used to read `and not _legacy`, which
+    #: switched the match-root commitment off for every block at or below 198 — i.e. the
+    #: WHOLE CHAIN as it exists today. Introduced to close one class, it opened a hole
+    #: across all 198 blocks, and it was invisible because the fixtures had been moved
+    #: ABOVE the ceiling precisely so they would exercise the verifying branch.
+    if not is_genesis and computed_match_root != served_merkle_root:
         return Verdict(
             ok=False, verdict=MATCH_ROOT_MISMATCH, block_number=number,
             served_block_hash=served_hash, computed_block_hash=computed,
-            served_prev_hash=contents["prev_hash"], **_roots,
+            served_prev_hash=c.prev_hash, **_roots,
             detail=f"block #{number} stores merkle_root {served_merkle_root} but its "
                    f"{len(matches)} served match leaf/leaves merkle to "
                    f"{computed_match_root}.")
@@ -370,18 +436,18 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     #: ⚠️ A node with no history still has no opinion — that is `last_seen_hash is None`,
     #: which is the honest reason and the only one needed.
     if last_seen_hash is not None:
-        if contents["prev_hash"] != last_seen_hash:
+        if c.prev_hash != last_seen_hash:
             return Verdict(
                 ok=False, verdict=PREV_HASH_MISMATCH, block_number=number,
                 served_block_hash=served_hash, computed_block_hash=computed,
-                served_prev_hash=contents["prev_hash"],
+                served_prev_hash=c.prev_hash,
                 expected_prev_hash=last_seen_hash, **_roots,
-                detail=f"block #{number} follows {contents['prev_hash']}; this node "
+                detail=f"block #{number} follows {c.prev_hash}; this node "
                        f"last verified {last_seen_hash}.")
 
     return Verdict(ok=True, verdict=OK, block_number=number,
                    served_block_hash=served_hash, computed_block_hash=computed,
-                   served_prev_hash=contents["prev_hash"], **_roots)
+                   served_prev_hash=c.prev_hash, **_roots)
 
 
 # ── the signed pre-images ───────────────────────────────────────────────────
@@ -557,7 +623,8 @@ def check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     the platform's malformed data, which is an accusation against the wrong party.
     """
     try:
-        return _check_block(contents, served_hash, last_seen_hash, served_merkle_root)
+        return _check_block(parse_contents(contents), served_hash, last_seen_hash,
+                            served_merkle_root)
     except (KeyError, TypeError, ValueError) as e:
         try:
             number = int(contents["block_number"])

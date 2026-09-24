@@ -29,6 +29,7 @@ implementation drifts.
 ⚠️ `hash_timestamp` IS THE EXACT STORED STRING, never re-serialised. The v1 defect was
 hashing a transient `now.isoformat()` while the row's `created_at` took a different instant.
 """
+import dataclasses
 import hashlib
 import os
 
@@ -704,8 +705,13 @@ def test_a_MARKER_BLOCK_AT_ANY_HEIGHT_is_still_chain_checked():
 
     v = verify.check_block(c, served_hash=honest, last_seen_hash="0x" + "11" * 32,
                            served_merkle_root=GENESIS_ROOT)
-    assert v.verdict == "PREV_HASH_MISMATCH", (
-        f"a marker block at height 500 bought its way out of the chain check: {v}")
+    #: ⭐ REFUSED BY THE MATCH-ROOT COMMITMENT NOW, WHICH IS STRONGER. The marker is bound
+    #: to block #1, so at height 500 this is simply not genesis — the stored root must
+    #: therefore agree with the leaves, and it does not. Previously the marker skipped that
+    #: check entirely and the block was caught only by the chain, which left its whole
+    #: match set uncommitted whenever the node had no verified predecessor.
+    assert v.verdict == "MATCH_ROOT_MISMATCH", (
+        f"a marker block at height 500 bought its way out of the match-root check: {v}")
     assert verify.should_refuse(v) is True
 
 
@@ -817,80 +823,53 @@ def test_a_MATCH_ROOT_MISMATCH_states_BOTH_SIDES_of_the_disagreement():
 
 # ── THE CLASS, not the instance ────────────────────────────────────────────
 
-def test_the_GATE_reads_NO_FIELD_the_pre_image_does_not_COMMIT():
-    """⛔⛔ THE CLASS BEHIND THREE ROUNDS OF FINDINGS. Each round closed the instance a seat
-    named and left the category intact, so the next round found it in the next field:
+def test_the_GATE_CANNOT_REACH_a_field_the_pre_image_does_not_COMMIT():
+    """⛔⛔ THE CLASS, MADE INEXPRESSIBLE RATHER THAN DETECTED.
 
-        round 1  `format_version`  — one unsigned field turned verification off
-        round 2  `is_genesis`      — replaced by a check against a PUBLIC constant, still
-                                     unsigned, still a bypass at any height
-        round 2  `validatable`     — could turn a good block into a signed accusation
+    Four rounds of findings were one class — the decision depended on a field the verified
+    party supplies and no pre-image commits: `format_version`, then `is_genesis`, then
+    `validatable`, and then **the test written to prove the class was closed.** That test
+    walked the gate's AST looking for reads of `contents`, and a §14 seat defeated it with
+    one line:
 
-    The general form is one sentence: **the node's decision depended on a field the
-    verified party supplies and no signed pre-image commits.** A fix that makes one such
-    field safe moves the defect to the next one; the only fix that closes it empties the
-    category.
+        _c = contents
+        is_genesis = (... == GENESIS_MARKER) or bool(_c.get("is_genesis"))
 
-    ⭐ SO THE ALLOWED SET IS DERIVED FROM `hash_block_v2`'s OWN SIGNATURE. Every term of the
-    v2 pre-image is committed by the hash the node is checking, so a lie about any of them
-    changes that hash and is caught by the arithmetic. Anything else is a field the platform
-    can set freely — and the gate must not read it.
+    **180 tests green, the blocker restored verbatim.** A detector pins a SPELLING of the
+    read. `contents.pop()`, `**contents`, a helper taking the dict, or the entry point it
+    never scanned would each have done the same.
 
-    ⚠️ This is the test, not the fix: a fourth field cannot be introduced without failing
-    here. Inexpressible rather than remembered."""
-    import ast
+    ⭐ SO THE DICT IS NOT IN SCOPE. The gate takes `Committed` — a frozen record carrying
+    exactly the terms of the v2 pre-image, built once at the boundary. To read an
+    uncommitted field inside the gate you must first add it to `Committed`, and this test
+    is what refuses that: its fields are checked **1:1, both ways**, against
+    `hash_block_v2`'s own signature.
+
+    ⚠️ Both ways matters. A subset check admits an extra field; a superset check admits a
+    missing one. Only a bijection says "these are the same terms"."""
     import inspect
-    import textwrap
 
-    #: the pre-image's terms, read off the function that builds it
     committed = set(inspect.signature(verify.hash_block_v2).parameters)
+    carried = {f.name for f in dataclasses.fields(verify.Committed)}
 
-    #: how each served key reaches a committed term. The VALUES are checked against
-    #: `committed` below, so this mapping cannot quietly admit a term the hash omits.
-    SERVED_TO_TERM = {
-        "block_number": "number", "prev_hash": "prev_hash",
-        "hash_timestamp": "hash_timestamp", "creator_id": "creator_id",
-        "counts": "match_count",            # carries all three
-        "match_leaves": "match_root", "event_leaves": "event_root",
-        "tx_leaves": "tx_root",
-    }
-    unknown = {t for t in SERVED_TO_TERM.values() if t not in committed}
-    assert not unknown, f"the mapping claims terms the pre-image does not commit: {unknown}"
+    #: the leaf lists ARE the three roots — they are what the roots are computed FROM, so
+    #: they stand in for them exactly and nothing else may.
+    LEAVES_TO_ROOTS = {"match_leaves": "match_root", "event_leaves": "event_root",
+                       "tx_leaves": "tx_root"}
+    normalised = {LEAVES_TO_ROOTS.get(f, f) for f in carried}
 
-    #: ⛔ AND THE MAPPING MUST BE INJECTIVE, or the allowed set can be widened by ALIASING.
-    #: Checking only that every VALUE is a committed term is not enough: adding
-    #: `"format_version": "number"` passes that check — `number` really is committed — and
-    #: quietly re-admits the exact field this whole class is about. Measured: that mutation
-    #: SURVIVED. One served key per committed term makes the alias a collision.
-    terms = list(SERVED_TO_TERM.values())
-    dupes = {t for t in terms if terms.count(t) > 1}
-    assert not dupes, (
-        f"two served keys claim the same pre-image term {sorted(dupes)}. One of them is an "
-        f"ALIAS, and an alias is how an uncommitted field re-enters the allowed set while "
-        f"every value still looks committed.")
+    assert normalised == committed, (
+        f"`Committed` and the v2 pre-image are not the same set of terms.\n"
+        f"  carried but NOT committed: {sorted(normalised - committed)}\n"
+        f"  committed but NOT carried: {sorted(committed - normalised)}\n"
+        f"A field on this record is a field the gate can decide on. Adding one that the "
+        f"hash does not commit is the defect this platform has now shipped four times.")
 
-    tree = ast.parse(textwrap.dedent(inspect.getsource(verify._check_block)))
-    read: set[str] = set()
-    for n in ast.walk(tree):
-        #: contents["x"]
-        if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
-                and n.value.id == "contents" and isinstance(n.slice, ast.Constant)):
-            read.add(n.slice.value)
-        #: contents.get("x", ...)
-        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                and n.func.attr == "get" and isinstance(n.func.value, ast.Name)
-                and n.func.value.id == "contents" and n.args
-                and isinstance(n.args[0], ast.Constant)):
-            read.add(n.args[0].value)
-
-    assert read, "the scan found no field reads at all — it is pointed at the wrong thing"
-    uncommitted = read - set(SERVED_TO_TERM)
-    assert not uncommitted, (
-        f"the gate reads {sorted(uncommitted)}, which the v2 pre-image does not commit. "
-        f"A field the verified party can set freely must not influence whether or how "
-        f"verification happens — that is the defect this platform has now shipped three "
-        f"times in three different fields. Read it for diagnostics if you must; do not "
-        f"decide on it.")
+    #: ⛔ AND THE GATE MUST NOT TAKE THE RAW PAYLOAD BACK AS A PARAMETER — that would put
+    #: the dict in scope again and make every field reachable by any spelling.
+    params = set(inspect.signature(verify._check_block).parameters)
+    assert "contents" not in params, (
+        "the gate takes the raw payload again; the class is reopened by construction")
 
 
 def test_the_DECISION_still_works_with_format_version_ABSENT_or_LYING():
@@ -917,3 +896,30 @@ def test_the_DECISION_still_works_with_format_version_ABSENT_or_LYING():
     v = verify.check_block(bad, served_hash="0x" + "00" * 32, last_seen_hash=None,
                            served_merkle_root=_mr(bad))
     assert v.verdict == "HASH_MISMATCH" and verify.should_refuse(v), v
+
+
+@pytest.mark.parametrize("n", [1, 10, 150, 198, 199, 500])
+def test_a_TAMPERED_merkle_root_is_REFUSED_AT_EVERY_HEIGHT_including_below_the_ceiling(n):
+    """⛔⛔ THE CEILING MUST NOT DISABLE THE MATCH-ROOT COMMITMENT. It read
+    `and not _legacy`, which switched this check off for every block at or below 198 — the
+    WHOLE CHAIN as it exists today. Introduced to close one class, it opened a hole across
+    all 198 blocks, and it was invisible because the fixtures had been moved ABOVE the
+    ceiling precisely so they would exercise the verifying branch. Every remaining
+    below-ceiling fixture set `format_version=1`, a field the gate no longer reads.
+
+    ⚠️ AND THE DISTINCTION IS REAL, not a weakening of the legacy rule. "I cannot reach
+    this block's hash" (v1 hashed a timestamp that was never persisted) is a limitation and
+    is attested. "The leaves I was served merkle to something other than the root you
+    stored" is a DISAGREEMENT the node can detect at any height, and it is refused."""
+    c = _contents(block_number=n)
+    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None,
+                           served_merkle_root="0x" + "77" * 32)
+    assert v.verdict == "MATCH_ROOT_MISMATCH", (
+        f"block #{n}: a stored root disagreeing with its own leaves was not refused — "
+        f"got {v.verdict}")
+    assert verify.should_refuse(v) is True
+
+    #: the control — the same block with an honest root verifies or attests, never refuses
+    ok = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None,
+                            served_merkle_root=_mr(c))
+    assert verify.should_refuse(ok) is False, ok
