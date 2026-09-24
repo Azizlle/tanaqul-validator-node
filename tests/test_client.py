@@ -111,3 +111,50 @@ def test_report_refusal_POSTS_EVERY_FIELD_THE_PRE_IMAGE_COMMITS():
     assert not missing, f"the pre-image commits {sorted(missing)} and the body omits them"
     for k in ("validator_id", "api_key", "block_number", "verdict", "signature"):
         assert k in body, k
+
+
+# ── round two: a network failure is a BackendError, not a process death ────
+
+@pytest.mark.parametrize("exc_name", ["Timeout", "ReadTimeout", "ConnectTimeout",
+                                      "ConnectionError", "RequestException"])
+@pytest.mark.parametrize("call", ["get_block_contents", "report_refusal", "sign_block",
+                                  "heartbeat"])
+def test_a_NETWORK_failure_is_a_BackendError_and_not_a_crash(call, exc_name):
+    """⛔ THE NODE DIED ON A NETWORK BLIP. `BackendError` is not a supertype of
+    `requests.exceptions.Timeout` or `ConnectionError`, and `_do_polling` catches only
+    `BackendError` — so a read timeout on ANY of the four calls escaped to `main()`, which
+    has no handler, and the process exited. None of the failure counters ever fired for the
+    commonest real failure there is.
+
+    ⚠️ Every caller's careful reasoning — "a fetch failure is not a disagreement", "a
+    submit that failed must be retried" — rests on this module raising something the loop
+    catches."""
+    import requests
+
+    exc = getattr(requests.exceptions, exc_name)("network is down")
+    kwargs = {
+        "get_block_contents": dict(block_number=1),
+        "report_refusal": dict(block_number=1, verdict="HASH_MISMATCH",
+                               signature_hex="ab", reported_at="R"),
+        "sign_block": dict(block_number=1, signature_hex="ab"),
+        "heartbeat": dict(block_height=0, peer_count=0, uptime_seconds=0),
+    }[call]
+    verb = "get" if call == "get_block_contents" else "post"
+
+    with patch.object(client._S, verb, side_effect=exc):
+        with pytest.raises(client.BackendError) as caught:
+            getattr(client, call)(**kwargs)
+    assert exc_name.lower()[:7] in str(caught.value).lower() or "network" in str(caught.value)
+
+
+def test_an_INDETERMINATE_WRITE_is_not_replayed_by_the_transport():
+    """⛔ A TIMEOUT ON A WRITE IS INDETERMINATE, NOT A FAILURE. The session retried
+    `POST` on read timeouts, so a submission that may already have been applied was
+    blindly replayed up to three times below the application — where no caller can see it
+    and no idempotency reasoning applies. Retrying a GET is free; retrying a write is a
+    decision, and it belongs to the caller."""
+    methods = client._S.adapters["https://"].max_retries.allowed_methods
+    assert "POST" not in methods, (
+        f"the transport replays POST ({sorted(methods)}); an indeterminate write is "
+        f"repeated where nothing can observe it")
+    assert "GET" in methods, "idempotent reads should still retry"

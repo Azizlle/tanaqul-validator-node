@@ -151,6 +151,8 @@ COUNT_MISMATCH = "COUNT_MISMATCH"
 CONTENTS_MALFORMED = "CONTENTS_MALFORMED"
 MATCH_ROOT_MISMATCH = "MATCH_ROOT_MISMATCH"
 #: the node could not check it, and it is old enough that this is expected -> attest
+#: the node was not given what it needs to decide — neither a signature nor an accusation
+UNCHECKABLE = "UNCHECKABLE"
 UNVALIDATABLE = "UNVALIDATABLE"
 #: the node could not check it and it is NOT old enough for that to be honest -> refuse
 FORMAT_REFUSED = "FORMAT_REFUSED"
@@ -210,8 +212,22 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     _ec, _tc = int(counts_pre["event_count"]), int(counts_pre["tx_count"])
     #: ⚠️ THE NODE DECIDES THIS ITSELF and only then agrees with the served flag. Taking
     #: `validatable` on trust is how one unsigned field turned verification off.
-    _v2 = (block_is_validatable(contents.get("format_version", 1), _ec, _tc)
-           and bool(contents.get("validatable")))
+    #: ⛔ THE NODE'S OWN COMPUTATION IS THE ANSWER, and the served flag is advisory. It
+    #: used to be a second condition, so an unsigned platform field still controlled the
+    #: gate — in the ACCUSING direction: clearing `validatable` on a good v2 block above
+    #: the ceiling produced a `tr2`-signed accusation. A block this node can verify is
+    #: never refused because the platform said not to bother.
+    #:
+    #: ⚠️ `format_version` is INDEXED, not defaulted. `.get(..., 1)` sat here in the module
+    #: whose stated rule is that every field is indexed, so a payload that merely omitted
+    #: the field was read as legacy and, above the ceiling, refused — an accusation
+    #: manufactured by an absence.
+    #: ⚠️ READ ONCE, USED TWICE. `format_version` was indexed in the gate and indexed
+    #: again in the detail string, so a `.get(..., 1)` slipped into the GATE was masked:
+    #: the detail's own index still raised and produced the same verdict by another route.
+    #: A guard whose mutation is absorbed by a neighbouring line is measured by nothing.
+    _fv = contents["format_version"]
+    _v2 = block_is_validatable(_fv, _ec, _tc)
 
     #: ⛔ CHECKED BEFORE ANYTHING IS COMPUTED, so the node never reports a mismatch it
     #: manufactured out of a shape it cannot read — but the ANSWER now depends on the block
@@ -225,7 +241,7 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
             block_number=number, served_block_hash=served_hash,
             event_count=_ec, tx_count=_tc,
             detail=(
-                f"block #{number} is format_version {contents.get('format_version')} with "
+                f"block #{number} is format_version {_fv} with "
                 f"{_ec} event(s) and {_tc} transaction(s); the node cannot reach a v2 hash "
                 f"for it. "
                 + ("At or below the legacy ceiling "
@@ -255,6 +271,27 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
 
     computed_match_root = merkle_root([sha256(match_leaf(f)) for f in matches])
 
+    #: ⛔ AN ABSENT `merkle_root` IS NOT AN EMPTY ONE, AND IT MUST NOT FAIL OPEN. The column
+    #: is nullable and the loop passes `or ""`; the match-root guard used to read
+    #: `if ... and served_merkle_root and ...`, so an empty value short-circuited it —
+    #: measured, a tampered column served as "" verified as OK. Worse for genesis: without
+    #: the field the marker cannot be recognised, so a correct genesis block became a
+    #: `tr2`-SIGNED accusation, which is the exact catastrophe this module was rewritten to
+    #: prevent, restored by a NULL.
+    #:
+    #: ⚠️ A BLOCK AWAITING A READ MAY NOT GUESS. The node signs nothing and accuses nobody,
+    #: and it does NOT fall back to attestation — that would let a NULL column downgrade
+    #: every block the way `format_version` once did.
+    if not served_merkle_root:
+        return Verdict(
+            ok=False, verdict=UNCHECKABLE, block_number=number,
+            served_block_hash=served_hash,
+            match_count=served_counts[0], event_count=served_counts[1],
+            tx_count=served_counts[2],
+            detail=f"block #{number} was served without a merkle_root, so the node cannot "
+                   f"tell whether it is genesis or whether the stored root agrees with the "
+                   f"leaves. Not a disagreement — the node was not given enough to check.")
+
     #: ⛔ GENESIS IS DERIVED FROM THE MARKER, NEVER FROM THE PAYLOAD'S `is_genesis`. The
     #: platform substitutes `sha256("genesis")` for a genesis block's match_root, so a node
     #: that merkled the (empty) match set disagreed with a block correct by construction —
@@ -262,21 +299,6 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     #: cannot reproduce. `merkle_root` comes from /pending-blocks and is compared to a
     #: constant this node holds: the platform can exhibit genesis, not declare it.
     is_genesis = (served_merkle_root == GENESIS_MARKER)
-
-    #: ⛔ AND OTHERWISE THE COLUMN MUST AGREE WITH THE LEAVES IT SUMMARISES. The platform
-    #: signs `tv2` with `block.merkle_root` — a stored column — while the node merkles the
-    #: served leaves, and nothing compared the two. A column edited away from its leaves
-    #: was invisible to both sides of the seam.
-    if not is_genesis and served_merkle_root and computed_match_root != served_merkle_root:
-        return Verdict(
-            ok=False, verdict=MATCH_ROOT_MISMATCH, block_number=number,
-            served_block_hash=served_hash, match_root=computed_match_root,
-            match_count=served_counts[0], event_count=served_counts[1],
-            tx_count=served_counts[2], hash_timestamp=contents["hash_timestamp"],
-            creator_id=contents["creator_id"],
-            detail=f"block #{number} stores merkle_root {served_merkle_root} but its "
-                   f"{len(matches)} served match leaf/leaves merkle to "
-                   f"{computed_match_root}.")
 
     match_root = effective_match_root(served_merkle_root, computed_match_root)
     event_root = merkle_root([sha256(event_leaf(f)) for f in events])
@@ -307,6 +329,23 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     #: itself, so a block whose stored hash was internally consistent but whose CONTENT
     #: differed from what was sealed passed unchallenged — there was nothing to
     #: challenge it with.
+    #: ⛔ AND THE COLUMN MUST AGREE WITH THE LEAVES IT SUMMARISES. The platform signs
+    #: `tv2` with `block.merkle_root` — a stored column — while the node merkles the served
+    #: leaves, and nothing compared the two: a column edited away from its leaves was
+    #: invisible to both sides of the seam.
+    #:
+    #: ⚠️ CHECKED AFTER THE HASH IS COMPUTED, DELIBERATELY, so the report can state BOTH
+    #: SIDES. Returning early left both hash fields empty and the row read "hash mismatch,
+    #: expected (no hash)" — a refusal that says only "no" is not evidence.
+    if not is_genesis and computed_match_root != served_merkle_root:
+        return Verdict(
+            ok=False, verdict=MATCH_ROOT_MISMATCH, block_number=number,
+            served_block_hash=served_hash, computed_block_hash=computed,
+            served_prev_hash=contents["prev_hash"], **_roots,
+            detail=f"block #{number} stores merkle_root {served_merkle_root} but its "
+                   f"{len(matches)} served match leaf/leaves merkle to "
+                   f"{computed_match_root}.")
+
     if computed != served_hash:
         return Verdict(
             ok=False, verdict=HASH_MISMATCH, block_number=number,
@@ -317,9 +356,18 @@ def _check_block(contents: dict, served_hash: str, last_seen_hash: str | None,
     #: ⛔ A SECOND, INDEPENDENT PROPERTY. A block can be internally perfect and still
     #: not follow the block this node last verified — which is what a fork, a rollback
     #: or a replayed history looks like from here.
-    #: ⚠️ Genesis has no predecessor and a node with no history has no opinion; neither
-    #: is a disagreement.
-    if last_seen_hash is not None and not is_genesis:
+    #:
+    #: ⛔ AND THERE IS NO GENESIS EXEMPTION, DELIBERATELY. One stood here — `and not
+    #: is_genesis` — and it was BOTH dead code and the whole attack surface. Dead, because
+    #: for a real genesis this node has never verified a block #0, so `last_seen_hash` is
+    #: already None and the branch cannot be reached. The attack surface, because
+    #: `GENESIS_MARKER` is a PUBLIC constant in an unsigned field with no binding to block
+    #: #1: a block at ANY height could exhibit it and skip this check, then be signed `tv2`
+    #: as validated because the platform builds `tv2` from the same column and agrees.
+    #:
+    #: ⚠️ A node with no history still has no opinion — that is `last_seen_hash is None`,
+    #: which is the honest reason and the only one needed.
+    if last_seen_hash is not None:
         if contents["prev_hash"] != last_seen_hash:
             return Verdict(
                 ok=False, verdict=PREV_HASH_MISMATCH, block_number=number,

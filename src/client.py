@@ -19,7 +19,12 @@ def _session() -> requests.Session:
         read=2,
         backoff_factor=1.0,
         status_forcelist=[],  # do NOT retry HTTP errors — only connection errors
-        allowed_methods=frozenset(["GET", "POST"]),
+        #: ⛔ READS ONLY. A timeout on a WRITE is INDETERMINATE, not a failure — the
+        #: submission may already have been applied — and replaying it here repeats it
+        #: BELOW the application, where no caller can see it and no idempotency reasoning
+        #: applies. Retrying a GET is free; retrying a write is a decision that belongs to
+        #: whoever knows what the write meant.
+        allowed_methods=frozenset(["GET"]),
     )
     s.mount("https://", HTTPAdapter(max_retries=retry))
     s.mount("http://", HTTPAdapter(max_retries=retry))
@@ -32,6 +37,23 @@ _S = _session()
 
 class BackendError(Exception):
     pass
+
+
+def _request(verb: str, url: str, **kw):
+    """Every HTTP call goes through here, so a network failure is a `BackendError`.
+
+    ⛔ THE NODE USED TO DIE ON A NETWORK BLIP. `requests` raises `Timeout` /
+    `ConnectionError`, which is not a `BackendError`, and the poll loop catches only
+    `BackendError` — so a read timeout on any call escaped to `main()`, which has no
+    handler, and the process exited. Every failure counter stayed at zero for the
+    commonest real failure there is, and every caller's careful reasoning about fetch
+    failures rested on an exception type that never arrived.
+    """
+    try:
+        return getattr(_S, verb)(url, **kw)
+    except requests.exceptions.RequestException as e:
+        raise BackendError(f"{verb.upper()} {url.rsplit('/', 1)[-1]}: "
+                           f"{type(e).__name__}: {e}") from e
 
 
 def heartbeat(block_height: int, peer_count: int, uptime_seconds: int,
@@ -54,7 +76,7 @@ def heartbeat(block_height: int, peer_count: int, uptime_seconds: int,
     }
     if public_key_hex:
         body["public_key_hex"] = public_key_hex
-    r = _S.post(f"{config.API_BASE}/validators/heartbeat", json=body, timeout=10)
+    r = _request("post", f"{config.API_BASE}/validators/heartbeat", json=body, timeout=10)
     if r.status_code == 401:
         raise BackendError("auth_failed: API key rejected")
     if r.status_code >= 400:
@@ -70,7 +92,7 @@ def get_pending_blocks() -> list:
         "X-Validator-Id": config.TANAQUL_VALIDATOR_ID,
         "X-Validator-Api-Key": config.TANAQUL_API_KEY,
     }
-    r = _S.get(f"{config.API_BASE}/validators/pending-blocks", headers=headers, timeout=10)
+    r = _request("get", f"{config.API_BASE}/validators/pending-blocks", headers=headers, timeout=10)
     if r.status_code == 401:
         raise BackendError("auth_failed: API key rejected")
     if r.status_code >= 400:
@@ -88,7 +110,7 @@ def sign_block(block_number: int, signature_hex: str, approved: bool = True) -> 
         "signature": signature_hex,
         "approved": bool(approved),
     }
-    r = _S.post(f"{config.API_BASE}/validators/sign-block", json=body, timeout=10)
+    r = _request("post", f"{config.API_BASE}/validators/sign-block", json=body, timeout=10)
     if r.status_code == 401:
         raise BackendError("auth_failed: API key rejected")
     if r.status_code == 400 and "Already signed" in (r.text or ""):
@@ -113,7 +135,7 @@ def get_block_contents(block_number: int) -> dict:
         "X-Validator-Id": config.TANAQUL_VALIDATOR_ID,
         "X-Validator-Api-Key": config.TANAQUL_API_KEY,
     }
-    r = _S.get(f"{config.API_BASE}/validators/blocks/{int(block_number)}/contents",
+    r = _request("get", f"{config.API_BASE}/validators/blocks/{int(block_number)}/contents",
                headers=headers, timeout=10)
     if r.status_code == 401:
         raise BackendError("auth_failed: API key rejected")
@@ -165,7 +187,7 @@ def report_refusal(*, block_number: int, verdict: str, signature_hex: str,
         "reported_at": reported_at,
         "signature": signature_hex,
     }
-    r = _S.post(f"{config.API_BASE}/validators/report-refusal", json=body, timeout=10)
+    r = _request("post", f"{config.API_BASE}/validators/report-refusal", json=body, timeout=10)
     if r.status_code == 401:
         raise BackendError("auth_failed: API key rejected")
     if r.status_code >= 400:

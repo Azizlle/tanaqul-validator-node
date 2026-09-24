@@ -128,10 +128,42 @@ def _refuse(sk, state: "PollState", v, block_number: int) -> None:
     message = verify.refusal_payload(
         number=block_number, validator_id=validator_id, verdict=wire,
         reported_at=reported_at, **facts)
-    client.report_refusal(
+    res = client.report_refusal(
         block_number=block_number, verdict=wire,
         signature_hex=crypto.sign_message(sk, message),
-        reported_at=reported_at, **facts)
+        reported_at=reported_at, **facts) or {}
+
+    #: ⛔ A 200 IS NOT A FILING. The platform's unique index is
+    #: `(block_number, validator_id, verdict)` and the insert is `ON CONFLICT DO NOTHING`,
+    #: so a SECOND, materially different observation of the same block comes back
+    #: `recorded: False` with HTTP 200 and is stored nowhere — measured against a real
+    #: database: this node files two, the database holds one, and no second alert fires.
+    #:
+    #: ⚠️ Recording it as filed anyway is *intent reported as act*: the node would suppress
+    #: for ever, believing an objection exists that does not. So the suppression key is set
+    #: ONLY on an accepted filing; a discarded one stays unsuppressed and is stated plainly.
+    #: Whether the platform SHOULD keep the second page is a schema question on a
+    #: money-path table, filed for a ruling — this half is not in question.
+    if not res.get("recorded", True):
+        #: ⛔ STATED ONCE, NOT ARGUED. The platform keeps the FIRST page per
+        #: (block, validator, verdict) by ruling — a validator filing two different
+        #: accusations about one block is broken or attacking, and unbounded rows on a
+        #: money-path table is the worse failure. So this observation exists nowhere, and
+        #: both wrong answers are available: recording it as filed is *intent reported as
+        #: act*, and re-sending it every poll is a load amplifier against a filing that can
+        #: never land — thousands of doomed POSTs a day, per block, per node.
+        #:
+        #: ⚠️ The suppression key is set to THIS observation, so the bound is per
+        #: observation and not per block: a genuinely different third one is attempted once
+        #: more, and stated once more.
+        state.refused[block_number] = _evidence_key(v)
+        healthcheck.record_refusal_fail()
+        logger.critical(
+            f"REFUSAL for block #{block_number} was DISCARDED by the platform's dedupe "
+            f"({wire}). This observation differs from the one already stored and now "
+            f"exists NOWHERE; the stored row is the first observation only. "
+            f"detail={v.detail}")
+        return
     state.refused[block_number] = _evidence_key(v)   #: only now
     healthcheck.record_block_refused()
     logger.critical(f"REFUSED block #{block_number}: {wire} — {v.detail}")

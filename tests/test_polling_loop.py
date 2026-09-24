@@ -543,3 +543,69 @@ def test_a_CONTENTS_FAILURE_increments_its_own_counter_and_signs_nothing(be, sk)
     validator_node._do_polling(sk, validator_node.PollState())
     assert _counter("validator_contents_fail_total") - before == 1
     assert be.signed == [] and be.refusals == []
+
+
+# ── round two: the node must not believe it filed what the platform discarded ──
+
+def test_a_DISCARDED_refusal_is_stated_ONCE_and_not_retried_for_ever(be, sk):
+    """⛔ THE PLATFORM KEEPS THE FIRST PAGE, BY RULING. Its unique index is
+    `(block_number, validator_id, verdict)` with `ON CONFLICT DO NOTHING`, so a second,
+    materially different observation of the same block comes back `recorded: False` with
+    HTTP 200 and is stored nowhere. That bound is deliberate — a validator filing two
+    different accusations against one block is broken or attacking, and unbounded rows on
+    a money-path table is the worse failure.
+
+    ⚠️ SO THE NODE'S JOB IS TO SAY SO ONCE, NOT TO ARGUE. Recording it as filed would be
+    *intent reported as act*; re-sending it every poll would be a load amplifier against a
+    filing that cannot ever be stored — 5,760 doomed POSTs a day per block per node. It
+    logs CRITICAL, counts it, and suppresses that observation.
+
+    ⚠️ AND THE BOUND IS PER OBSERVATION, not per block: a genuinely new third observation
+    is attempted once more, and says so once more."""
+    honest = be.add(1, prev_hash=GENESIS, events=3,
+                    tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
+    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+
+    seen = {"n": 0}
+
+    def discarding(**kw):
+        seen["n"] += 1
+        be.refusals.append(kw)
+        return {"recorded": seen["n"] == 1, "duplicate": seen["n"] > 1}
+
+    validator_node.client.report_refusal = discarding
+    state = validator_node.PollState()
+    validator_node._do_polling(sk, state)
+    assert seen["n"] == 1, "the first observation was not filed"
+
+    #: a DIFFERENT observation, same verdict -> attempted once, discarded, stated once
+    be.blocks[1][0]["event_leaves"][1]["metal"] = "METAL_B"
+    before = _counter("validator_refusal_fail_total")
+    validator_node._do_polling(sk, state)
+    assert seen["n"] == 2
+    assert _counter("validator_refusal_fail_total") - before == 1, (
+        "a discarded filing was not counted, so it is visible nowhere")
+
+    #: ⛔ and NOT again, for ever
+    for _ in range(5):
+        validator_node._do_polling(sk, state)
+    assert seen["n"] == 2, (
+        f"the node re-sent a filing the platform can never store ({seen['n']} attempts); "
+        f"at POLL_INTERVAL=15 that is thousands of doomed POSTs a day per block")
+
+    #: a THIRD, genuinely different observation is still attempted once
+    be.blocks[1][0]["event_leaves"][2]["metal"] = "METAL_C"
+    validator_node._do_polling(sk, state)
+    assert seen["n"] == 3, "a new observation was swallowed by the suppression"
+
+
+def test_a_refusal_the_platform_ACCEPTS_is_recorded_and_suppressed(be, sk):
+    """⭐ THE CONTROL. Without it the assertion above is satisfied by a node that never
+    records anything, which would re-file every poll forever."""
+    honest = be.add(1, prev_hash=GENESIS,
+                    tamper=lambda c: c["event_leaves"][0].__setitem__("grams", "999.0"))
+    be.blocks[1] = (be.blocks[1][0], honest, be.blocks[1][2])
+    state = validator_node.PollState()
+    for _ in range(4):
+        validator_node._do_polling(sk, state)
+    assert len(be.refusals) == 1 and 1 in state.refused

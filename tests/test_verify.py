@@ -572,7 +572,20 @@ def test_the_ceiling_is_a_PINNED_NUMBER_not_a_moving_target():
     derived at runtime from whatever the platform reports would be the same unsigned switch
     one level up."""
     assert isinstance(verify.LEGACY_BLOCK_CEILING, int)
-    assert verify.LEGACY_BLOCK_CEILING >= 198
+    #: ⛔ PINNED EXACTLY, BOTH DIRECTIONS. This read `>= 198`, which pins only the SAFE
+    #: direction and admits every value that disarms the guard: raised to 1,000,000,000 it
+    #: passed, and `format_version` is then once more one unsigned platform field that
+    #: turns verification off on any block. Every other ceiling test uses
+    #: `LEGACY_BLOCK_CEILING + 1`, so the VALUE is invisible to all of them — the rule was
+    #: observed and the number was not.
+    #:
+    #: ⚠️ Raising this is a deliberate act with a measurement behind it. The chain had 198
+    #: blocks on 2026-09-23 (public explorer API, all 198 CONFIRMED), and every block after
+    #: the ceiling must be v2. Changing it means re-measuring, in the same commit.
+    assert verify.LEGACY_BLOCK_CEILING == 198, (
+        "the legacy ceiling moved. It is a measured fact about the live chain, not a "
+        "tunable: raising it re-admits the format_version bypass on every block below the "
+        "new value.")
 
 
 # ── contentless: one predicate, shared with the platform ───────────────────
@@ -652,3 +665,150 @@ def test_a_CONTENT_BEARING_GENESIS_uses_the_SUBSTITUTED_match_root():
     #: the control — merkling the (empty) match set gives a DIFFERENT root, so this test
     #: can tell the two apart rather than passing because they coincide
     assert verify.merkle_root([]) != GENESIS_ROOT
+
+
+# ── round two: the genesis exemption, and the field it rested on ───────────
+
+def test_a_MARKER_BLOCK_AT_ANY_HEIGHT_is_still_chain_checked():
+    """⛔ THE ROUND-ONE BLOCKER, LIVE AGAIN UNDER A DIFFERENT FIELD. Replacing the payload's
+    `is_genesis` boolean with a check against `GENESIS_MARKER` looked like deriving the
+    answer from an artifact. It is not: **`sha256("genesis")` is a public constant**, so
+    "exhibiting genesis" is writing one computable value into one unsigned field. Nothing
+    binds the marker to block #1, so a block at ANY height could set it and skip the chain
+    check — then be signed `tv2` as validated, because the platform builds `tv2` with
+    `match_root = block.merkle_root` and therefore agrees.
+
+    ⭐ THE EXEMPTION WAS ALSO DEAD CODE. For a real genesis the node holds no verified
+    predecessor — `state.verified.get(0)` is always None — so `last_seen_hash` is already
+    None and the exemption could never fire for the block it was written for. It bought
+    nothing and cost the round."""
+    c = _contents(block_number=500, prev_hash="0x" + "ff" * 32)
+    honest = verify.hash_block_v2(
+        number=500, prev_hash=c["prev_hash"], match_root=GENESIS_ROOT,
+        event_root=verify.merkle_root(
+            [verify.sha256(verify.event_leaf(c["event_leaves"][0]))]),
+        tx_root=verify.merkle_root([]), match_count=0, event_count=1, tx_count=0,
+        hash_timestamp=c["hash_timestamp"], creator_id=c["creator_id"])
+
+    v = verify.check_block(c, served_hash=honest, last_seen_hash="0x" + "11" * 32,
+                           served_merkle_root=GENESIS_ROOT)
+    assert v.verdict == "PREV_HASH_MISMATCH", (
+        f"a marker block at height 500 bought its way out of the chain check: {v}")
+    assert verify.should_refuse(v) is True
+
+
+def test_a_REAL_GENESIS_is_admitted_because_there_is_NO_PREDECESSOR_not_by_exemption():
+    """⚠️ THE PROPERTY THE DELETED EXEMPTION WAS SUPPOSED TO PROTECT, asserted by the
+    mechanism that actually provides it. Genesis is block #1, the node never verified a
+    block #0, so `last_seen_hash` is None and the chain check does not run."""
+    c = _contents(block_number=1, prev_hash="0x" + "00" * 64, creator_id="genesis")
+    honest = verify.hash_block_v2(
+        number=1, prev_hash=c["prev_hash"], match_root=GENESIS_ROOT,
+        event_root=verify.merkle_root(
+            [verify.sha256(verify.event_leaf(c["event_leaves"][0]))]),
+        tx_root=verify.merkle_root([]), match_count=0, event_count=1, tx_count=0,
+        hash_timestamp=c["hash_timestamp"], creator_id="genesis")
+    v = verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                           served_merkle_root=GENESIS_ROOT)
+    assert v.ok is True, v
+
+
+# ── round two: an absent merkle_root must not fail open ────────────────────
+
+def test_an_ABSENT_merkle_root_is_UNCHECKABLE_it_does_not_fail_open():
+    """⛔ ONE NULL COLUMN REINSTATED THE HEADLINE. `blocks.merkle_root` is nullable and the
+    loop passed `b.get("merkle_root") or ""`, and the match-root guard read
+    `if not is_genesis and served_merkle_root and ...` — so an empty value short-circuited
+    it. Measured: a tampered column served normally gave MATCH_ROOT_MISMATCH; the SAME
+    tampering served as `""` gave OK.
+
+    ⛔ AND IT WAS WORSE FOR GENESIS. Served as `""` the marker cannot be recognised, so a
+    correct genesis block became a `tr2`-SIGNED HASH_MISMATCH — the exact accusation this
+    module was rewritten to prevent, restored by a NULL.
+
+    ⚠️ A BLOCK AWAITING A READ MAY NOT GUESS. Without the field the node cannot decide
+    whether this is genesis or whether the column agrees with the leaves, so it signs
+    nothing and accuses nobody — it does not fall back to attestation either, because that
+    would let a NULL downgrade every block the way `format_version` once did."""
+    c = _contents(block_number=300)
+    honest = _expected_hash(c)
+
+    for absent in ("", None):
+        v = verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                               served_merkle_root=absent)
+        assert v.verdict == "UNCHECKABLE", (absent, v)
+        assert v.ok is False
+        assert verify.should_refuse(v) is False, "a missing field is not an accusation"
+        assert verify.should_attest_v1(v) is False, "a NULL must not downgrade the block"
+
+    #: the control — with the field present the same block verifies
+    assert verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                              served_merkle_root=_mr(c)).ok is True
+
+
+def test_a_TAMPERED_column_cannot_hide_behind_an_EMPTY_one():
+    c = _contents(block_number=300)
+    honest = _expected_hash(c)
+    assert verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                              served_merkle_root="0x" + "77" * 32
+                              ).verdict == "MATCH_ROOT_MISMATCH"
+    assert verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                              served_merkle_root="").verdict == "UNCHECKABLE"
+
+
+def test_the_SERVED_validatable_flag_cannot_manufacture_an_ACCUSATION():
+    """⛔ AN UNSIGNED PLATFORM FIELD STILL CONTROLLED THE GATE — in the accusing direction.
+    The node computes `block_is_validatable` itself and then ALSO required the served flag,
+    so `validatable: false` on a perfectly good v2 block above the ceiling produced
+    FORMAT_REFUSED and a `tr2`-signed accusation. Deleting the conjunct survived the whole
+    suite: neither direction of the belt-and-braces was tested.
+
+    ⚠️ The node's own computation is the answer. The served flag is advisory — it is
+    checked for DISAGREEMENT, which is worth knowing, but a block the node can verify is
+    never refused because the platform said not to bother."""
+    c = _contents(block_number=verify.LEGACY_BLOCK_CEILING + 1, validatable=False)
+    v = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None,
+                           served_merkle_root=_mr(c))
+    assert v.verdict != "FORMAT_REFUSED", (
+        f"the platform turned a verifiable block into a signed accusation by clearing a "
+        f"flag: {v}")
+    assert v.ok is True, v
+
+
+def test_a_MISSING_format_version_is_not_DEFAULTED_to_legacy():
+    """⛔ `.get("format_version", 1)` IN THE MODULE WHOSE RULE IS THAT EVERY FIELD IS
+    INDEXED. A payload that omits the field was silently read as v1 and, above the ceiling,
+    refused — an accusation manufactured by an absence."""
+    c = _contents(block_number=verify.LEGACY_BLOCK_CEILING + 1)
+    del c["format_version"]
+    v = verify.check_block(c, served_hash="0xzz", last_seen_hash=None,
+                           served_merkle_root=_mr(c))
+    assert v.verdict == "CONTENTS_MALFORMED", v
+    assert "format_version" in v.detail
+
+
+def test_a_MATCH_ROOT_MISMATCH_states_BOTH_SIDES_of_the_disagreement():
+    """⛔ A REFUSAL THAT SAYS ONLY "NO" IS NOT EVIDENCE. This verdict populated the node's
+    computed `match_root` and left both hash fields empty, so on the wire it became
+    `HASH_MISMATCH` with `expected_block_hash=""` — a stored row reading "hash mismatch,
+    expected (no hash)", carrying no record of what the platform held. That directly
+    contradicts the pre-image's own promise that the report states the disagreement itself
+    rather than merely that one occurred."""
+    c = _contents(block_number=300)
+    honest = _expected_hash(c)
+    v = verify.check_block(c, served_hash=honest, last_seen_hash=None,
+                           served_merkle_root="0x" + "77" * 32)
+    assert v.verdict == "MATCH_ROOT_MISMATCH"
+    assert v.served_block_hash == honest, "what the platform stores is not recorded"
+    assert v.computed_block_hash, "the node's own block hash is not recorded"
+    assert v.match_root == _mr(c), (
+        "the root the node computed is not recorded, so the row states nothing about WHAT "
+        "the node thinks the leaves merkle to")
+    assert v.event_root and v.tx_root, "the other roots are not recorded either"
+
+    #: ⚠️ AND THE TWO BLOCK HASHES ARE EQUAL HERE, WHICH IS THE TRUTH AND NOT A GAP. The
+    #: hash commits to the match_root the NODE computed, so a block whose stored COLUMN
+    #: disagrees with its leaves still hashes identically on both sides — that is exactly
+    #: why this verdict has to exist separately from HASH_MISMATCH. The other half of the
+    #: disagreement is the platform's own column, which it already holds.
+    assert v.computed_block_hash == honest
