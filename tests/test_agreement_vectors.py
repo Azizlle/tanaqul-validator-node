@@ -43,7 +43,7 @@ V = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
 
 KINDS = ("sha256", "merkle_root", "match_leaf", "event_leaf", "tx_leaf",
          "hash_block_v2", "validation_payload", "refusal_payload",
-         "effective_match_root", "carries_validatable_content",
+         "effective_match_root", "is_genesis_block", "carries_validatable_content",
          "block_is_validatable")
 
 
@@ -98,6 +98,15 @@ def test_effective_match_root_vectors(c):
     genesis block and filed a signed accusation. It is a named function on both sides now,
     so the vectors carry it."""
     assert verify.effective_match_root(**c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("is_genesis_block"))
+def test_is_genesis_block_vectors(c):
+    """⛔ THE PREDICATE, CARRIED ACROSS THE SEAM. It was inline on both sides, so when the
+    node was bound to block #1 and the platform was not, no vector could see it: the
+    `effective_match_root` cases carried no `number` at all, and a platform substituting the
+    marker at height 500 passed every one."""
+    assert verify.is_genesis_block(**c["fields"]) is c["output"]
 
 
 @pytest.mark.parametrize("c", _cases("block_is_validatable"))

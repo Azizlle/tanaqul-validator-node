@@ -348,9 +348,9 @@ def _check_block(c: Committed, served_hash: str, last_seen_hash: str | None,
     #:
     #: ⚠️ Genesis is block #1 by construction — `POST /blocks/genesis` creates #1 — so the
     #: number is the binding the marker lacks, and the number IS committed by the hash.
-    is_genesis = (served_merkle_root == GENESIS_MARKER and number == 1)
+    is_genesis = is_genesis_block(number, served_merkle_root)
 
-    match_root = effective_match_root(served_merkle_root, computed_match_root)
+    match_root = effective_match_root(number, served_merkle_root, computed_match_root)
     event_root = merkle_root([sha256(event_leaf(f)) for f in events])
     tx_root = merkle_root([sha256(tx_leaf(f)) for f in txs])
 
@@ -559,7 +559,23 @@ def block_is_validatable(format_version: int, event_count: int, tx_count: int) -
     return int(format_version or 1) >= 2 and carries_validatable_content(event_count, tx_count)
 
 
-def effective_match_root(stored_merkle_root: str, computed_match_root: str) -> str:
+def is_genesis_block(number: int, stored_merkle_root: str) -> bool:
+    """Whether this block is genesis — the platform's predicate, named, bound to block #1.
+
+    ⛔ IT WAS AN INLINE EXPRESSION IN `_check_block`, AND `effective_match_root` BESIDE IT
+    STILL KEYED ON THE MARKER ALONE. So the predicate said "not genesis" at height 500 while
+    the substitution handed back the marker anyway. The node survived that only because
+    the match-root comparison below ran on the predicate; the platform had the same split
+    and no such comparison, so its `/chain/verify` passed a marker block at #500 with a
+    swapped match set that this node refuses. One predicate, called by the substitution,
+    and carried by the vectors — a rule that is an inline expression can be pinned by
+    nothing.
+    """
+    return number == 1 and stored_merkle_root == GENESIS_MARKER
+
+
+def effective_match_root(number: int, stored_merkle_root: str,
+                         computed_match_root: str) -> str:
     """Which match_root a block's v2 hash actually commits to — the platform's rule, named.
 
     ⛔ A GENESIS BLOCK'S match_root IS NOT THE MERKLE OF ITS MATCH SET. The platform
@@ -567,12 +583,14 @@ def effective_match_root(stored_merkle_root: str, computed_match_root: str) -> s
     block correct by construction, refused it, and filed a `tr2`-SIGNED accusation that the
     platform had sealed something it cannot reproduce. Every node, every poll, forever.
 
-    ⚠️ KEYED ON THE MARKER, NOT ON BLOCK #1 AND NOT ON EMPTINESS — an admin can mint a
-    non-genesis block #1, and a relaunch may seal genesis WITH an initial custody event.
-    And the marker is a CONSTANT held here, so the platform can exhibit genesis, never
-    declare it.
+    ⚠️ KEYED ON THE MARKER AND BLOCK #1 TOGETHER, through `is_genesis_block`. Not on
+    emptiness — a relaunch may seal genesis WITH an initial custody event. Not on the number
+    alone — an admin can mint a non-genesis block #1. And not on the marker alone, which
+    is `sha256` of a public word: this docstring used to say exactly that, and it was the
+    hole — the substitution applied at ANY height after the predicate had been bound.
     """
-    return stored_merkle_root if stored_merkle_root == GENESIS_MARKER else computed_match_root
+    return (stored_merkle_root if is_genesis_block(number, stored_merkle_root)
+            else computed_match_root)
 
 
 def carries_validatable_content(event_count: int, tx_count: int) -> bool:

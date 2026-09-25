@@ -295,6 +295,7 @@
   "effective_match_root": [
     {
       "fields": {
+        "number": 1,
         "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e",
         "computed_match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d"
       },
@@ -302,6 +303,7 @@
     },
     {
       "fields": {
+        "number": 1,
         "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e",
         "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
       },
@@ -309,6 +311,7 @@
     },
     {
       "fields": {
+        "number": 42,
         "stored_merkle_root": "0xabababababababababababababababababababababababababababababababab",
         "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
       },
@@ -316,6 +319,7 @@
     },
     {
       "fields": {
+        "number": 1,
         "stored_merkle_root": "",
         "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
       },
@@ -323,6 +327,7 @@
     },
     {
       "fields": {
+        "number": 7,
         "stored_merkle_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d",
         "computed_match_root": "0x2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d"
       },
@@ -330,10 +335,78 @@
     },
     {
       "fields": {
+        "number": 1,
         "stored_merkle_root": "0XAEEBAD4A796FCC2E15DC4C6061B45ED9B373F26ADFC798CA7D2D8CC58182718E",
         "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
       },
       "output": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+    },
+    {
+      "fields": {
+        "number": 500,
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e",
+        "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+      },
+      "output": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+    },
+    {
+      "fields": {
+        "number": 2,
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e",
+        "computed_match_root": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+      },
+      "output": "0xf040e3d0d877d96c3c40a414c5806f2d3a131526f112f0b6d3d347deebd7eb93"
+    }
+  ],
+  "is_genesis_block": [
+    {
+      "fields": {
+        "number": 1,
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "number": 500,
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "number": 2,
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "number": 0,
+        "stored_merkle_root": "0xaeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "number": 1,
+        "stored_merkle_root": "0xabababababababababababababababababababababababababababababababab"
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "number": 1,
+        "stored_merkle_root": ""
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "number": 1,
+        "stored_merkle_root": "0xAEEBAD4A796FCC2E15DC4C6061B45ED9B373F26ADFC798CA7D2D8CC58182718E"
+      },
+      "output": false
     }
   ],
   "carries_validatable_content": [
