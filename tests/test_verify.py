@@ -923,3 +923,63 @@ def test_a_TAMPERED_merkle_root_is_REFUSED_AT_EVERY_HEIGHT_including_below_the_c
     ok = verify.check_block(c, served_hash=_expected_hash(c), last_seen_hash=None,
                             served_merkle_root=_mr(c))
     assert verify.should_refuse(ok) is False, ok
+
+
+# ── §14 seats B and C, 2026-09-25: the ruled ceiling-to-0 and the empty genesis ──
+
+def _empty_genesis(**over):
+    """The genesis `POST /blocks/genesis` mints: block #1, no leaves, the marker root."""
+    c = _contents(block_number=1, prev_hash="0x" + "0" * 64, creator_id="genesis",
+                  counts={"match_count": 0, "event_count": 0, "tx_count": 0},
+                  match_leaves=[], event_leaves=[], tx_leaves=[])
+    c.update(over)
+    h = verify.hash_block_v2(
+        number=c["block_number"], prev_hash=c["prev_hash"], match_root=GENESIS_ROOT,
+        event_root=verify.merkle_root([]), tx_root=verify.merkle_root([]),
+        match_count=0, event_count=0, tx_count=0,
+        hash_timestamp=c["hash_timestamp"], creator_id=c["creator_id"])
+    return c, h
+
+
+@pytest.mark.parametrize("ceiling", [0, verify.LEGACY_BLOCK_CEILING])
+def test_the_EMPTY_GENESIS_is_ATTESTED_at_ANY_ceiling_including_the_ruled_zero(monkeypatch, ceiling):
+    """⛔ BOTH SEATS, MEASURED. The genesis endpoint mints #1 with no events and no
+    transactions, and the no-content check returned FORMAT_REFUSED for any contentless
+    block above the ceiling. At today's 198 genesis sat below it and was attested; at the
+    RULED ceiling of 0, every node would have filed a signed refusal against a genesis
+    correct by construction, and it would never have confirmed.
+
+    ⭐ THE EXEMPTION IS EARNED, NOT DECLARED. The marker is a public constant in an unsigned
+    field, so a contentless #1 exhibiting it is still recomputed: only if its hash
+    reproduces is it genesis, and then it is attested (there is nothing to possess, so a
+    tv2 signature cannot exist)."""
+    monkeypatch.setattr(verify, "LEGACY_BLOCK_CEILING", ceiling)
+    c, h = _empty_genesis()
+    v = verify.check_block(c, served_hash=h, last_seen_hash=None,
+                           served_merkle_root=GENESIS_ROOT)
+    assert verify.should_refuse(v) is False, (
+        f"at ceiling {ceiling} the node ACCUSES the genesis block: {v.verdict} — {v.detail}")
+    assert verify.should_attest_v1(v) is True, f"genesis is neither refused nor attested: {v}"
+
+
+def test_at_ceiling_ZERO_an_empty_block_1_that_does_NOT_reproduce_is_REFUSED(monkeypatch):
+    """The exemption's edge: a contentless #1 serving the marker whose hash does not
+    reproduce is not genesis, it is a forgery wearing the marker — and above the ceiling a
+    hash that does not reproduce is refused."""
+    monkeypatch.setattr(verify, "LEGACY_BLOCK_CEILING", 0)
+    c, h = _empty_genesis()
+    v = verify.check_block(c, served_hash="0x" + "ee" * 32, last_seen_hash=None,
+                           served_merkle_root=GENESIS_ROOT)
+    assert v.verdict == verify.HASH_MISMATCH and verify.should_refuse(v) is True, (
+        f"a forged empty #1 wearing the marker was not refused: {v.verdict}")
+
+
+@pytest.mark.parametrize("number,root", [(2, GENESIS_ROOT), (1, verify.merkle_root([]))])
+def test_at_ceiling_ZERO_any_OTHER_empty_block_is_still_REFUSED(monkeypatch, number, root):
+    """⭐ THE CONTROL: the exemption is genesis's alone — #2 with the marker, and #1 without
+    it, are contentless blocks the rule says cannot be sealed honestly."""
+    monkeypatch.setattr(verify, "LEGACY_BLOCK_CEILING", 0)
+    c, h = _empty_genesis(block_number=number)
+    v = verify.check_block(c, served_hash=h, last_seen_hash=None, served_merkle_root=root)
+    assert v.verdict == verify.FORMAT_REFUSED, (
+        f"an empty block #{number} (root {root[:10]}…) escaped the no-content refusal: {v.verdict}")

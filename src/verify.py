@@ -148,11 +148,13 @@ LEGACY_BLOCK_CEILING = 198
 def is_legacy_block(number: int) -> bool:
     """Whether a block that does not reproduce its hash is EXPECTED rather than an error.
 
-    ⛔ U5, 2026-09-25 — ONE RULE WHERE THERE WERE TWO. The platform answered this with
-    `format_version < 2` (its own column) and the node with `number <= 198`; they agree on
-    today's chain and diverge on any other. Measured by running the node's gate: a tampered
-    v2 block at #5 was attested, the same block at #500 refused. After a genesis wipe every
-    block of the NEW chain at or below 198 would have had its tamper refusal switched off.
+    ⛔ U5, 2026-09-25 — THE CEILING IS ONE VALUE ON BOTH SIDES. This node decides by
+    `number <= 198`; the platform decided by its own `format_version` column alone.
+    Measured by running this gate: a tampered v2 block at #5 was attested, the same block at
+    #500 refused. After a genesis wipe every block of the NEW chain at or below 198 would
+    have had its tamper refusal switched off — which is why the VALUE must move on both
+    sides at once. (The platform's `/chain/verify` combines it with the stored format; it
+    does not skip a v2 block below the ceiling, and neither does this node.)
 
     ⭐ RULED (Aziz, 2026-09-25): the ceiling goes to 0, shipped WITH the wipe — all current
     data is test data and goes with it. It stays 198 until then because today's chain IS
@@ -302,7 +304,17 @@ def _check_block(c: Committed, served_hash: str, last_seen_hash: str | None,
 
     #: ⛔ NO LEAF SET, NOTHING TO POSSESS. `carries_validatable_content` reads the COUNTS,
     #: which the pre-image commits, so a lie about them changes the hash and is caught.
-    if not carries_validatable_content(_ec, _tc):
+    #:
+    #: ⛔ EXCEPT GENESIS, AND ONLY IF IT EARNS IT — §14 seats B and C, 2026-09-25. The
+    #: genesis endpoint mints #1 with no content, so at the RULED ceiling of 0 this branch
+    #: refused it: every node would have filed a signed accusation against a block correct
+    #: by construction, and genesis would never have confirmed. A contentless #1 exhibiting
+    #: the marker is therefore NOT decided here: it falls through to the recomputation, and
+    #: is attested below only if its hash reproduces. The marker is a public constant in an
+    #: unsigned field, so exhibiting it must not buy an attestation on its own.
+    _empty_genesis = (not carries_validatable_content(_ec, _tc)
+                      and is_genesis_block(number, served_merkle_root))
+    if not carries_validatable_content(_ec, _tc) and not _empty_genesis:
         return Verdict(
             ok=False, verdict=(UNVALIDATABLE if _legacy else FORMAT_REFUSED),
             block_number=number, served_block_hash=served_hash,
@@ -441,6 +453,16 @@ def _check_block(c: Committed, served_hash: str, last_seen_hash: str | None,
             served_block_hash=served_hash, computed_block_hash=computed, **_roots,
             detail=f"block #{number} hashes to {computed} from its own served leaves; "
                    f"the platform stores {served_hash}.")
+
+    #: ⭐ THE EMPTY GENESIS, NOW PROVEN: it reproduces its hash, so it is the block the
+    #: genesis endpoint minted — and with no leaf set there is nothing a tv2 signature could
+    #: prove, so it is ATTESTED, never refused and never "validated".
+    if _empty_genesis:
+        return Verdict(
+            ok=False, verdict=UNVALIDATABLE, block_number=number,
+            served_block_hash=served_hash, computed_block_hash=computed, **_roots,
+            detail="block #1 is the genesis block — it reproduces its stored hash and "
+                   "carries no leaf set, so it is attested rather than validated.")
 
     #: ⛔ A SECOND, INDEPENDENT PROPERTY. A block can be internally perfect and still
     #: not follow the block this node last verified — which is what a fork, a rollback
