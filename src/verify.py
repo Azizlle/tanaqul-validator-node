@@ -538,6 +538,8 @@ def refusal_payload(
 #: The verdict strings the platform will store. Anything else is a 400 — an unreviewed
 #: verdict is a bug in the node, not a dispute, and the platform says so rather than
 #: recording a string nobody has agreed the meaning of.
+#: ⛔ A COPY, AND PINNED AS ONE: `refusal_verdicts` in `spec/agreement_vectors.json` is
+#: compared to this tuple here and to the platform's `REFUSAL_VERDICTS` in CHECK 5.
 PLATFORM_REFUSAL_VERDICTS = ("FORMAT_NOT_VALIDATABLE", "HASH_MISMATCH",
                              "PREV_HASH_MISMATCH", "CONTENTS_MALFORMED")
 

@@ -43,6 +43,7 @@ V = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
 
 KINDS = ("sha256", "merkle_root", "match_leaf", "event_leaf", "tx_leaf",
          "hash_block_v2", "validation_payload", "signed_block_hash", "refusal_payload",
+         "refusal_verdicts",
          "effective_match_root", "is_genesis_block", "carries_validatable_content",
          "block_is_validatable")
 
@@ -99,6 +100,19 @@ def test_signed_block_hash_vectors(c):
 @pytest.mark.parametrize("c", _cases("refusal_payload"))
 def test_refusal_payload_vectors(c):
     assert verify.refusal_payload(**c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("refusal_verdicts"))
+def test_refusal_verdicts_vectors(c):
+    """⛔ U8 — THE TWIN THAT CHECKED ITSELF. `PLATFORM_REFUSAL_VERDICTS` is a hand copy of
+    the platform's `REFUSAL_VERDICTS`, and the wire mapping was checked against THIS copy
+    — so a verdict the platform renamed or dropped would still pass here, and the node
+    would report a word the platform answers with a 400: the refusal lost, on the one
+    channel built because refusals had nowhere to go. Both copies now equal the vector,
+    and the wire mapping answers to the vector, not to the copy."""
+    assert sorted(verify.PLATFORM_REFUSAL_VERDICTS) == c["output"]
+    unaccepted = set(verify.WIRE_VERDICTS.values()) - set(c["output"])
+    assert not unaccepted, f"the node reports verdicts the platform will 400: {unaccepted}"
 
 
 @pytest.mark.parametrize("c", _cases("effective_match_root"))
