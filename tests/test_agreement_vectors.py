@@ -44,7 +44,7 @@ V = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
 KINDS = ("sha256", "merkle_root", "match_leaf", "event_leaf", "tx_leaf",
          "hash_block_v2", "validation_payload", "signed_block_hash", "refusal_payload",
          "refusal_verdicts",
-         "effective_match_root", "is_genesis_block", "carries_validatable_content",
+         "effective_match_root", "is_genesis_block", "is_legacy_block", "carries_validatable_content",
          "block_is_validatable")
 
 
@@ -122,6 +122,14 @@ def test_effective_match_root_vectors(c):
     genesis block and filed a signed accusation. It is a named function on both sides now,
     so the vectors carry it."""
     assert verify.effective_match_root(**c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("is_legacy_block"))
+def test_is_legacy_block_vectors(c):
+    """⛔ U5 — THE CEILING, CARRIED ACROSS THE SEAM. The platform decided legacy by its own
+    `format_version` column and this node by height; the vectors now pin ONE rule and its
+    VALUE, so the genesis wipe's ceiling-to-0 cannot land on one side alone."""
+    assert verify.is_legacy_block(**c["fields"]) is c["output"]
 
 
 @pytest.mark.parametrize("c", _cases("is_genesis_block"))

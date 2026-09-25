@@ -445,6 +445,44 @@
       "output": false
     }
   ],
+  "is_legacy_block": [
+    {
+      "fields": {
+        "number": 0
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "number": 1
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "number": 197
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "number": 198
+      },
+      "output": true
+    },
+    {
+      "fields": {
+        "number": 199
+      },
+      "output": false
+    },
+    {
+      "fields": {
+        "number": 500
+      },
+      "output": false
+    }
+  ],
   "carries_validatable_content": [
     {
       "fields": {

@@ -144,6 +144,27 @@ GENESIS_MARKER = sha256("genesis")
 #: refusal with no path back is a deletion. Above it, claiming v1 is refused.
 LEGACY_BLOCK_CEILING = 198
 
+
+def is_legacy_block(number: int) -> bool:
+    """Whether a block that does not reproduce its hash is EXPECTED rather than an error.
+
+    ⛔ U5, 2026-09-25 — ONE RULE WHERE THERE WERE TWO. The platform answered this with
+    `format_version < 2` (its own column) and the node with `number <= 198`; they agree on
+    today's chain and diverge on any other. Measured by running the node's gate: a tampered
+    v2 block at #5 was attested, the same block at #500 refused. After a genesis wipe every
+    block of the NEW chain at or below 198 would have had its tamper refusal switched off.
+
+    ⭐ RULED (Aziz, 2026-09-25): the ceiling goes to 0, shipped WITH the wipe — all current
+    data is test data and goes with it. It stays 198 until then because today's chain IS
+    legacy below it. The `is_legacy_block` agreement vectors pin the value on both sides,
+    so flipping one side alone turns CHECK 5 and the node's suite red.
+
+    ⚠️ ONLY THIS QUESTION. Whether a tv2 signature can exist (`sign_block`, `/contents`)
+    are platform questions this node does not ask; here the ceiling decides only what a
+    failed recomputation or an empty leaf set MEANS — UNVALIDATABLE, or a refusal.
+    """
+    return number <= LEGACY_BLOCK_CEILING
+
 OK = "OK"
 HASH_MISMATCH = "HASH_MISMATCH"
 PREV_HASH_MISMATCH = "PREV_HASH_MISMATCH"
@@ -277,7 +298,7 @@ def _check_block(c: Committed, served_hash: str, last_seen_hash: str | None,
     #: a block whose leaves reproduce its stored hash IS v2, and one whose leaves do not is
     #: either legacy or tampered — a question the BLOCK NUMBER answers, and the number is
     #: committed. Being told is the part that was forgeable.
-    _legacy = number <= LEGACY_BLOCK_CEILING
+    _legacy = is_legacy_block(number)
 
     #: ⛔ NO LEAF SET, NOTHING TO POSSESS. `carries_validatable_content` reads the COUNTS,
     #: which the pre-image commits, so a lie about them changes the hash and is caught.
