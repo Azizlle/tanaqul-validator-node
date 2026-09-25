@@ -42,7 +42,7 @@ VECTORS_PATH = pathlib.Path(__file__).resolve().parent.parent / "spec" / "agreem
 V = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
 
 KINDS = ("sha256", "merkle_root", "match_leaf", "event_leaf", "tx_leaf",
-         "hash_block_v2", "validation_payload", "refusal_payload",
+         "hash_block_v2", "validation_payload", "signed_block_hash", "refusal_payload",
          "effective_match_root", "is_genesis_block", "carries_validatable_content",
          "block_is_validatable")
 
@@ -84,6 +84,16 @@ def test_hash_block_v2_vectors(c):
 @pytest.mark.parametrize("c", _cases("validation_payload"))
 def test_validation_payload_vectors(c):
     assert verify.validation_payload(**c["fields"]) == c["output"]
+
+
+@pytest.mark.parametrize("c", _cases("signed_block_hash"))
+def test_signed_block_hash_vectors(c):
+    """⛔ ONE RULE THAT WAS FOUR RENDERINGS — inline in `validation_payload`, in
+    `crypto.sign_block_hash`, at the platform's call site, and in the platform's CHECK 5,
+    which reproduced that call site so the two `validation_payload`s would agree. The
+    edge cases are the point: `0X` and a second `0x` are NOT stripped, and a side that
+    tidied either would sign different bytes."""
+    assert verify.signed_block_hash(c["input"]) == c["output"]
 
 
 @pytest.mark.parametrize("c", _cases("refusal_payload"))

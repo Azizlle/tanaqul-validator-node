@@ -4,6 +4,8 @@ import os
 import logging
 from ecdsa import SigningKey, NIST256p, BadSignatureError
 
+from src.verify import signed_block_hash
+
 logger = logging.getLogger("validator.crypto")
 
 
@@ -51,11 +53,12 @@ def sign_message(sk: SigningKey, message: str) -> str:
 def sign_block_hash(sk: SigningKey, block_hash: str) -> str:
     """Sign a bare block hash — the v1 attestation-of-receipt signature.
 
-    The hash arrives as `0x…` and the backend verifies against it stripped, so the prefix
-    comes off here. One signing implementation: this is `sign_message` with that one
-    transformation named.
+    The hash arrives as `0x…` and the backend verifies against it stripped. One signing
+    implementation, and one stripping rule: this is `sign_message` over
+    `verify.signed_block_hash`, the same function the `tv2` pre-image calls — this line
+    used to carry its own copy of it.
     """
-    return sign_message(sk, block_hash[2:] if block_hash.startswith("0x") else block_hash)
+    return sign_message(sk, signed_block_hash(block_hash))
 
 
 def public_key_hex(sk: SigningKey) -> str:

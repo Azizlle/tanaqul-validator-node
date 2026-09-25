@@ -248,6 +248,32 @@
       "output": "tv2|207|38badbf09a85edda04f16cdc862bdd973811936077f643d438f1df9644fdd09f|0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f|0x0521dd2ea59f89534e9bba87c090cb4180ff4cdad39b72db851dc6757d1111f5|0x702b093b990c730145412769f5a628288291054d67df68dcda346f09efc1bcda|0x7846d1a28d0e90086e8344262e3f6933b43a900443e50caa7203563080793552|2|3|1|2026-09-23T08:15:42.123456+00:00|00000000-0000-0000-0000-00000000000a"
     }
   ],
+  "signed_block_hash": [
+    {
+      "input": "0x38badbf09a85edda04f16cdc862bdd973811936077f643d438f1",
+      "output": "38badbf09a85edda04f16cdc862bdd973811936077f643d438f1"
+    },
+    {
+      "input": "38badbf09a85edda04f16cdc862bdd973811936077f643d438f1",
+      "output": "38badbf09a85edda04f16cdc862bdd973811936077f643d438f1"
+    },
+    {
+      "input": "0X38BADBF09A85EDDA04F16CDC862BDD973811936077F643D438F1",
+      "output": "0X38BADBF09A85EDDA04F16CDC862BDD973811936077F643D438F1"
+    },
+    {
+      "input": "0x0x38badbf09a85edda04f16cdc862bdd973811936077f643d438f1",
+      "output": "0x38badbf09a85edda04f16cdc862bdd973811936077f643d438f1"
+    },
+    {
+      "input": "0x",
+      "output": ""
+    },
+    {
+      "input": "",
+      "output": ""
+    }
+  ],
   "refusal_payload": [
     {
       "fields": {

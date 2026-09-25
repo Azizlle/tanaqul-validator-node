@@ -458,6 +458,25 @@ def _check_block(c: Committed, served_hash: str, last_seen_hash: str | None,
 # the block hash, so a signature over it would prove nothing about who computed it.
 
 
+def signed_block_hash(block_hash: str) -> str:
+    """The form a block hash takes inside ANY signed message — the platform's rule, named.
+
+    ⛔ IT WAS WRITTEN OUT FOUR TIMES ACROSS THE TWO REPOS. Here, inline in
+    `validation_payload`; in `crypto.sign_block_hash` for the v1 signature; at the
+    platform's `sign_block` call site; and a fourth time in the platform's CHECK 5, which
+    reproduced that call site because the platform's `validation_payload` took the hash
+    already stripped while this one stripped it itself. Four renderings that agreed, one
+    of them existing only to make the other three look like one rule.
+
+    ⚠️ EXACTLY ONE LEADING LOWERCASE `0x`, AND ONLY FROM THE BLOCK HASH. `prev_hash` and
+    the roots keep theirs, so nothing about the data says which one is stripped; `0X` is
+    not stripped and neither is a second `0x`. The vectors pin every one of those, because
+    a node that got any of them "more right" would sign different bytes and receive one
+    deliberately uninformative 401 while reporting itself healthy.
+    """
+    return block_hash[2:] if block_hash.startswith("0x") else block_hash
+
+
 def validation_payload(
     number: int,
     block_hash: str,
@@ -480,9 +499,8 @@ def validation_payload(
     receives one deliberately uninformative 401, and reports itself healthy while
     attesting nothing.
     """
-    _bh = block_hash[2:] if block_hash.startswith("0x") else block_hash
     return (
-        f"tv2|{number}|{_bh}|{prev_hash}|{match_root}|{event_root}|{tx_root}"
+        f"tv2|{number}|{signed_block_hash(block_hash)}|{prev_hash}|{match_root}|{event_root}|{tx_root}"
         f"|{match_count}|{event_count}|{tx_count}|{hash_timestamp}|{creator_id}"
     )
 
