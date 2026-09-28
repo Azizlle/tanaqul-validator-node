@@ -258,8 +258,11 @@ def _do_polling(sk, state: "PollState") -> int:
                 continue
             if res.get("signing_closed"):
                 #: the window closed before this signature landed: stop on this block — never
-                #: retried, and counted neither as signed nor as a failure to chase
+                #: retried, and counted neither as signed nor as a failure to chase. ⛔ But THIS NODE
+                #: VERIFIED IT, so it still seeds the next block's chain check (§14 seat B F8): without
+                #: it the next block is checked with no predecessor and its prev-hash link is skipped.
                 state.signed.add(n)
+                state.verified[n] = v.computed_block_hash
                 logger.info(f"block #{n}: signing window already closed — not signed")
                 continue
             state.signed.add(n)

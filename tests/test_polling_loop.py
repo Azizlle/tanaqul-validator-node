@@ -687,3 +687,25 @@ def test_a_CLOSED_signing_window_is_not_retried_and_not_counted_as_signed_or_fai
     d = {n: _counter(n) - before[n] for n in before}
     assert d == {"validator_blocks_validated_total": 0, "validator_sign_fail_total": 0,
                  "validator_blocks_signed_total": 0}, d
+
+
+def test_a_CLOSED_window_still_seeds_the_chain_check_for_the_NEXT_block(be, sk):
+    """§14 seat B F8 (2026-09-28): the node verified B+1 fully, then the platform answered SIGNING_CLOSED.
+    `state.verified` was not written, so B+2 was checked with no predecessor and its prev-hash link was
+    skipped. A verification that PASSED seeds the chain whatever the signing outcome."""
+    be.add(B + 1, prev_hash=GENESIS)
+    be.add(B + 2, prev_hash="0x" + "ab" * 32)          # does NOT link to B+1
+
+    def _closed_then_real(n, sig, approved=True):
+        if n == B + 1:
+            return {"signing_closed": True, "block_number": n}
+        return be.sign_block(n, sig, approved)
+
+    validator_node.client.sign_block = _closed_then_real
+    state = validator_node.PollState()
+    try:
+        validator_node._do_polling(sk, state)
+    finally:
+        validator_node.client.sign_block = be.sign_block
+    assert B + 1 in state.verified, "a block that passed verification did not seed the chain"
+    assert B + 2 not in [s["n"] for s in be.signed], "a block that does not link to its verified predecessor was signed"
