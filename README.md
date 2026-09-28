@@ -52,6 +52,16 @@ A refusal is signed with your key and states both hashes, so the disagreement is
 evidence rather than a flag. If the block is later corrected, your node signs it on
 the next poll — no restart needed.
 
+### Signing closes a short window after a block confirms
+
+A block stays open for signatures from when it is sealed until **a short window after it
+confirms** (60 seconds by default; the platform sets it). Every eligible node that signs
+inside that window shares the block's validators' pool equally, and the pool is paid when
+the window closes. After the close the platform stops offering the block and refuses a late
+signature with `SIGNING_CLOSED`; your node treats that as settled — it does not retry, and it
+is counted neither as a signed block nor as a failure. A node that is online and polling
+signs well inside the window.
+
 ## Verifying the node against the protocol
 
 `spec/agreement_vectors.json` holds the protocol's hashing vectors: inputs and the

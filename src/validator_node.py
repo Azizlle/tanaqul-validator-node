@@ -256,6 +256,12 @@ def _do_polling(sk, state: "PollState") -> int:
                 healthcheck.record_sign_fail()
                 logger.error(f"sign block #{n} failed: {e}")
                 continue
+            if res.get("signing_closed"):
+                #: the window closed before this signature landed: stop on this block — never
+                #: retried, and counted neither as signed nor as a failure to chase
+                state.signed.add(n)
+                logger.info(f"block #{n}: signing window already closed — not signed")
+                continue
             state.signed.add(n)
             state.verified[n] = v.computed_block_hash
             state.refused.pop(n, None)
@@ -270,10 +276,14 @@ def _do_polling(sk, state: "PollState") -> int:
             #: decides the scheme by trying v2 FIRST and falling back, so this can never
             #: inflate a validated quorum. `state.verified` is deliberately NOT written.
             try:
-                client.sign_block(n, crypto.sign_block_hash(sk, served_hash), approved=True)
+                res = client.sign_block(n, crypto.sign_block_hash(sk, served_hash), approved=True)
             except client.BackendError as e:
                 healthcheck.record_sign_fail()
                 logger.error(f"attest block #{n} failed: {e}")
+                continue
+            if res.get("signing_closed"):
+                state.signed.add(n)
+                logger.info(f"block #{n}: signing window already closed — not attested")
                 continue
             state.signed.add(n)
             healthcheck.record_block_attested_v1()

@@ -116,6 +116,12 @@ def sign_block(block_number: int, signature_hex: str, approved: bool = True) -> 
     if r.status_code == 400 and "Already signed" in (r.text or ""):
         # Idempotent — backend already has our sig
         return {"already_signed": True, "block_number": block_number}
+    if r.status_code == 409 and "SIGNING_CLOSED" in (r.text or ""):
+        #: the block's signing window closed before this signature arrived (platform, 2026-09-28):
+        #: a settled answer — the round's pool went to the signatures collected in time — not a
+        #: failure to retry. The platform also stops offering a closed block, so this is only ever
+        #: a race with the close.
+        return {"signing_closed": True, "block_number": block_number}
     if r.status_code >= 400:
         raise BackendError(f"sign-block HTTP {r.status_code}: {r.text[:200]}")
     return r.json()

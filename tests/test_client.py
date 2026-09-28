@@ -158,3 +158,23 @@ def test_an_INDETERMINATE_WRITE_is_not_replayed_by_the_transport():
         f"the transport replays POST ({sorted(methods)}); an indeterminate write is "
         f"repeated where nothing can observe it")
     assert "GET" in methods, "idempotent reads should still retry"
+
+
+def test_a_CLOSED_signing_window_is_a_RESULT_not_an_error():
+    """The platform refuses a signature after a block's signing window closes (409 SIGNING_CLOSED).
+    That is a settled answer, not a failure to retry — same idiom as "Already signed"."""
+    fake_resp = MagicMock(status_code=409, text='{"detail":{"code":"SIGNING_CLOSED","message_en":"closed"}}')
+    with patch.object(client._S, "post", return_value=fake_resp):
+        out = client.sign_block(block_number=7, signature_hex="abcd" * 32)
+        assert out["signing_closed"] is True
+
+
+def test_any_OTHER_409_is_still_an_error():
+    fake_resp = MagicMock(status_code=409, text='{"detail":{"code":"BLOCK_REJECTED"}}')
+    with patch.object(client._S, "post", return_value=fake_resp):
+        try:
+            client.sign_block(block_number=7, signature_hex="abcd" * 32)
+        except client.BackendError:
+            pass
+        else:
+            raise AssertionError("a 409 that is not SIGNING_CLOSED must stay an error")

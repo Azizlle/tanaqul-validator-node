@@ -662,3 +662,28 @@ def test_a_COMPLETE_pending_entry_is_still_processed(be, sk):
     be.add(B + 1, prev_hash=GENESIS)
     validator_node._do_polling(sk, validator_node.PollState())
     assert [s["n"] for s in be.signed] == [B + 1]
+
+
+def test_a_CLOSED_signing_window_is_not_retried_and_not_counted_as_signed_or_failed(be, sk):
+    """The platform closes signing on a block a short window after it confirms (2026-09-28) and
+    stops offering it. A signature that races the close gets 409 SIGNING_CLOSED: the node stops on
+    that block — it does not retry it every poll, and it counts it neither as a block it signed nor as
+    a failure an operator should chase."""
+    be.add(B + 1, prev_hash=GENESIS)
+    before = {n: _counter(n) for n in ("validator_blocks_validated_total", "validator_sign_fail_total",
+                                       "validator_blocks_signed_total")}
+    calls = []
+
+    def _closed(n, sig, approved=True):
+        calls.append(n)
+        return {"signing_closed": True, "block_number": n}
+
+    validator_node.client.sign_block = _closed
+    state = validator_node.PollState()
+    validator_node._do_polling(sk, state)
+    validator_node._do_polling(sk, state)
+    validator_node.client.sign_block = be.sign_block
+    assert calls == [B + 1], f"a closed window was retried: {calls}"
+    d = {n: _counter(n) - before[n] for n in before}
+    assert d == {"validator_blocks_validated_total": 0, "validator_sign_fail_total": 0,
+                 "validator_blocks_signed_total": 0}, d
