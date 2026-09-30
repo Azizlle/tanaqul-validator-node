@@ -1,11 +1,28 @@
 name: Build & Publish
 
+# ⭐ PATH FILTER (2026-09-30): a push or PR touching only docs/ or markdown starts no run; tag pushes are never
+# path-filtered by GitHub, so releases always build.
 on:
   push:
     branches: [main]
     tags: ['v*']
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
   pull_request:
     branches: [main]
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+
+# a newer push cancels an older run of the same ref (a tag is its own ref, so a release build is never cancelled by a branch push)
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
